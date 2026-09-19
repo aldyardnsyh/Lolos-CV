@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import { analyzeATS, getApiConfig, optimizeResumeContent, safeLocalGet, safeLocalSet } from "@/lib/api"
+import { analyzeATS, getApiConfig, normalizeResumeData, optimizeResumeContent, safeLocalGet, safeLocalSet } from "@/lib/api"
 import { buildExclusionTerms, extractMeaningfulTokens } from "@/lib/keywords"
 import type { ResumeData, JobPosting, ATSAnalysis } from "@/types"
 
@@ -45,26 +45,27 @@ function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAn
   try { host = jobPosting.url ? new URL(jobPosting.url).hostname : "" } catch {}
   const exclude = buildExclusionTerms(jobPosting.companyName, jobPosting.location, host)
 
+  const safeArr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
   const resumeText = [
-    resume.personalInfo.fullName,
-    resume.summary,
-    ...resume.experiences.map((e) => `${e.position} ${e.company} ${e.description}`),
-    ...((resume as any).organizations ?? []).map((o: any) => `${o.position} ${o.organization} ${o.description}`),
-    ...resume.education.map((e) => `${e.degree} ${e.field} ${e.institution}`),
-    ...resume.skills.map((s) => `${s.name} ${s.level}`),
-    ...((resume as any).skillGroups ?? []).flatMap((g: any) => [g.title, ...(g.items ?? [])]),
-    ...resume.certifications,
-    ...((resume as any).awards ?? []),
-    ...resume.languages,
+    resume?.personalInfo?.fullName ?? "",
+    resume?.summary ?? "",
+    ...safeArr<any>(resume?.experiences).map((e) => `${e?.position ?? ""} ${e?.company ?? ""} ${e?.description ?? ""}`),
+    ...safeArr<any>((resume as any)?.organizations).map((o: any) => `${o?.position ?? ""} ${o?.organization ?? ""} ${o?.description ?? ""}`),
+    ...safeArr<any>(resume?.education).map((e) => `${e?.degree ?? ""} ${e?.field ?? ""} ${e?.institution ?? ""}`),
+    ...safeArr<any>(resume?.skills).map((s) => `${s?.name ?? ""} ${s?.level ?? ""}`),
+    ...safeArr<any>((resume as any)?.skillGroups).flatMap((g: any) => [g?.title ?? "", ...safeArr(g?.items)]),
+    ...safeArr(resume?.certifications),
+    ...safeArr((resume as any)?.awards),
+    ...safeArr(resume?.languages),
   ].join(" ")
   const resumeTokens = new Set(extractMeaningfulTokens(resumeText))
 
   const jobText = [
-    jobPosting.position,
-    jobPosting.description,
-    ...jobPosting.keyRequirements,
-    ...jobPosting.preferredQualifications,
-    ...jobPosting.responsibilities,
+    jobPosting?.position ?? "",
+    jobPosting?.description ?? "",
+    ...safeArr(jobPosting?.keyRequirements),
+    ...safeArr(jobPosting?.preferredQualifications),
+    ...safeArr(jobPosting?.responsibilities),
   ].join(" ")
   const jobTokens = extractMeaningfulTokens(jobText, exclude)
 
@@ -72,7 +73,8 @@ function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAn
   const missing = jobTokens.filter((w) => !resumeTokens.has(w))
 
   const matchRate = jobTokens.length > 0 ? Math.round((matched.length / jobTokens.length) * 100) : 50
-  const totalSections = [resume.summary, ...resume.experiences.map((e) => e.description), ...resume.education.map((e) => e.degree)].filter(Boolean).length
+  const experiences = safeArr<any>(resume?.experiences)
+  const totalSections = [resume?.summary, ...experiences.map((e) => e?.description), ...safeArr<any>(resume?.education).map((e) => e?.degree)].filter(Boolean).length
 
   const scoreRequirement = (req: string) => {
     const tokens = extractMeaningfulTokens(req, exclude)
@@ -85,7 +87,7 @@ function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAn
   return {
     overallScore: Math.min(95, 40 + matchRate * 0.4 + totalSections * 5),
     keywordMatch: Math.min(100, matchRate),
-    formatScore: 75 + (resume.experiences.length > 0 ? 15 : 0),
+    formatScore: 75 + (experiences.length > 0 ? 15 : 0),
     sectionScore: Math.min(100, totalSections * 15),
     lengthScore: Math.min(100, 50 + matched.length * 2),
     matchedKeywords: matched.slice(0, 12),
@@ -96,7 +98,7 @@ function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAn
       "Gunakan angka dan metrik dalam deskripsi pengalaman",
       "Pastikan format konsisten (font, spacing, bullet points)",
     ],
-    keyPoints: jobPosting.keyRequirements.slice(0, 8).map((req) => {
+    keyPoints: safeArr<string>(jobPosting?.keyRequirements).slice(0, 8).map((req) => {
       const { hit, score } = scoreRequirement(req)
       return {
         text: req,
@@ -136,7 +138,7 @@ export function AtsOptimizer() {
     setOptimizing(true)
     setError(null)
     try {
-      const resume: ResumeData = JSON.parse(storedResume)
+      const resume: ResumeData = normalizeResumeData(JSON.parse(storedResume))
       const job: JobPosting = JSON.parse(storedJob)
       const missingKw = result?.missingKeywords || []
       // Snapshot "sebelum" disimpan dulu; resume_data baru ditimpa hanya jika optimasi sukses
@@ -183,18 +185,32 @@ export function AtsOptimizer() {
     const storedJob = safeLocalGet("job_analysis")
 
     if (storedResume && storedJob) {
+      // Normalisasi dulu: data lama/tidak lengkap (array hilang, bentuk beda)
+      // bikin mock-analysis throw → hasil blank. Dengan normalisasi, analisis
+      // SELALU menghasilkan sesuatu (real atau deterministik lokal).
+      let resume: ResumeData
+      let job: JobPosting
       try {
-        const resume: ResumeData = JSON.parse(storedResume)
-        const job: JobPosting = JSON.parse(storedJob)
+        resume = normalizeResumeData(JSON.parse(storedResume))
+        job = JSON.parse(storedJob)
+      } catch (err: any) {
+        setIsDemo(true)
+        setError("Data tersimpan korup dan tidak bisa dibaca. Isi ulang resume/lowongan lalu coba lagi.")
+        await new Promise((r) => setTimeout(r, 800))
+        setResult(demoScores)
+        setAnalyzing(false)
+        return
+      }
+      try {
         const analysis = await analyzeATS(resume, job)
         setResult(analysis)
       } catch (err: any) {
         setIsDemo(true)
         setError(err?.message || "Analisis gagal. Menampilkan hasil simulasi.")
         try {
-          setResult(generateMockAnalysis(JSON.parse(storedResume), JSON.parse(storedJob)))
+          setResult(generateMockAnalysis(resume, job))
         } catch {
-          setResult(null)
+          setResult(demoScores)
         }
       }
     } else {
