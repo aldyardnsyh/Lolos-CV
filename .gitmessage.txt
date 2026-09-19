@@ -1,0 +1,9 @@
+# <tipe>(<scope>): <subjek singkat maks 72 char>
+# Contoh: feat(builder): tambah section organizations + CRUD editor
+#
+# Tipe:  feat | fix | update | add | remove | refactor | docs
+#        style | chore | perf | security
+# Scope: builder | analyzer | pricing | donations | webhook | api
+#        ui | config | deps | docs
+#
+# Baris kosong lalu body opsional (alasan/perubahan penting).

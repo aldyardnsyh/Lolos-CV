@@ -1,0 +1,197 @@
+"use client"
+
+import type { JobPosting, ResumeData } from "@/types"
+
+const GENERIC_BULLETS = [
+  "Completed assigned tasks on time with consistent quality",
+  "Collaborated with cross-functional team members to reach quarterly targets",
+  "Identified process bottlenecks and proposed practical improvements",
+  "Maintained clear documentation for handover and reporting",
+]
+
+// Grup skill default yang kaya — mencontohkan versi selengkap-lengkapnya:
+// tiap kategori punya judul yang bisa diedit user langsung di editor.
+const RICH_DEFAULT_GROUPS = [
+  { id: "sg_1", title: "Programming Languages", items: ["JavaScript", "TypeScript", "C#", "PHP", "Go", "Python", "SQL"] },
+  { id: "sg_2", title: "Frontend", items: ["React.js", "Next.js", "Vue.js", "Tailwind CSS", "SPA Development", "SSR", "PWA"] },
+  { id: "sg_3", title: "Backend & APIs", items: ["Node.js", "Express.js", "Laravel", ".NET", "FastAPI", "RESTful API Development", "Microservices Architecture", "WebSockets", "Clean Architecture"] },
+  { id: "sg_4", title: "AI & Integration", items: ["OpenAI API", "LLM Integration", "Natural-Language Analytics"] },
+  { id: "sg_5", title: "Security & Auth", items: ["JWT", "OAuth", "RBAC", "Audit Logging"] },
+  { id: "sg_6", title: "Databases", items: ["MySQL", "PostgreSQL", "MongoDB", "Redis", "Elasticsearch"] },
+  { id: "sg_7", title: "DevOps & Cloud", items: ["Docker", "CI/CD (GitHub Actions, Jenkins)", "AWS (EC2, S3)", "Git"] },
+]
+
+function cleanList(items: unknown, limit: number): string[] {
+  if (!Array.isArray(items)) return []
+  return items
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean)
+    .slice(0, limit)
+}
+
+function isUnknownCompany(name: unknown): boolean {
+  const v = typeof name === "string" ? name.trim().toLowerCase() : ""
+  return !v || v === "unknown company"
+}
+
+// Contoh CV deterministik tanpa API — dibuat SELENGKAP mungkin agar user
+// langsung tergambar versi paling penuh: 3 pengalaman, 2 organisasi,
+// 2 pendidikan (dengan thesis+research multi-bullet), 6-7 grup skill,
+// 3 proyek, 4-5 awards, 3 bahasa. Kalau ada data lowongan, grup pertama
+// disesuaikan (posisi, perusahaan, skill, deskripsi) agar match.
+export function buildMockSampleResume(job: JobPosting | null): ResumeData {
+  const position = job?.position?.trim() && job.position !== "Unknown Position"
+    ? job.position.trim()
+    : "Software Engineer"
+  const company = !isUnknownCompany(job?.companyName)
+    ? String(job?.companyName).trim()
+    : "PT Sample Maju Bersama"
+  const location = job?.location?.trim() || "Jakarta, Indonesia"
+
+  const jobSkills = cleanList(job?.keyRequirements, 5)
+    .concat(cleanList(job?.preferredQualifications, 3))
+    .slice(0, 8)
+  const hasJobSkills = jobSkills.length > 0
+  const skillGroups = hasJobSkills
+    ? [
+        { id: "sg_1", title: "Key Skills", items: jobSkills.slice(0, 5) },
+        ...RICH_DEFAULT_GROUPS.slice(0, 4).map((g, i) => ({ ...g, id: `sg_${i + 2}` })),
+      ]
+    : RICH_DEFAULT_GROUPS.map((g) => ({ ...g }))
+  const flatNames = skillGroups.flatMap((g) => g.items).slice(0, 10)
+  const levels = ["advanced", "intermediate", "intermediate", "advanced", "intermediate", "beginner", "intermediate", "beginner", "advanced", "intermediate"] as const
+  const skills = flatNames.map((name, i) => ({
+    id: `sk_${i + 1}`,
+    name,
+    level: levels[i % levels.length],
+  }))
+
+  const resp = cleanList(job?.responsibilities, 4)
+  const bullets = (resp.length > 0 ? resp : GENERIC_BULLETS).slice(0, 4)
+  const techLine = (hasJobSkills ? jobSkills : RICH_DEFAULT_GROUPS[0].items).slice(0, 3).join(", ")
+
+  return {
+    personalInfo: {
+      fullName: "Budi Santoso",
+      headline: position,
+      email: "budi.santoso@email.com",
+      phone: "+62 812-3456-7890",
+      location,
+      linkedin: "linkedin.com/in/budisantoso",
+      portfolio: "github.com/budisantoso",
+    },
+    summary: `Results-driven ${position} with 5+ years of experience building scalable web platforms at ${company}, including ${techLine}. Proven track record of leading small teams, shipping reliable releases with CI/CD, and turning ambiguous requirements into measurable outcomes. Active in tech communities and comfortable collaborating across product, design, and data teams.`,
+    experiences: [
+      {
+        id: "exp_1",
+        company,
+        position: `Senior ${position}`,
+        location,
+        startDate: "2022-06",
+        endDate: "",
+        current: true,
+        description: bullets.join("\n"),
+      },
+      {
+        id: "exp_2",
+        company: "PT Contoh Sukses Abadi",
+        position,
+        location,
+        startDate: "2020-06",
+        endDate: "2022-05",
+        current: false,
+        description: [
+          "Shipped 12+ releases with zero critical incidents by tightening code review and CI checks",
+          "Cut page load time by 45% through caching, image optimization, and bundle splitting",
+          "Mentored 3 junior developers with weekly 1-on-1s and pairing sessions",
+        ].join("\n"),
+      },
+      {
+        id: "exp_3",
+        company: "PT Nusantara Digital",
+        position: `Junior ${position}`,
+        location: "Bandung, Indonesia",
+        startDate: "2019-01",
+        endDate: "2020-05",
+        current: false,
+        description: GENERIC_BULLETS.slice(0, 3).join("\n"),
+      },
+    ],
+    organizations: [
+      {
+        id: "org_1",
+        organization: "Himpunan Mahasiswa Informatika",
+        position: "Coordinator",
+        location,
+        startDate: "2021-01",
+        endDate: "2022-12",
+        current: false,
+        description: "Coordinated 20 volunteers for campus tech events\nOrganized monthly sharing sessions with 100+ attendees\nBuilt registration site that cut manual admin work by 60%",
+      },
+      {
+        id: "org_2",
+        organization: "React Indonesia Community",
+        position: "Event Volunteer",
+        location: "Jakarta, Indonesia",
+        startDate: "2023-03",
+        endDate: "",
+        current: true,
+        description: "Host monthly meetups and maintain event documentation\nOnboard new speakers and review talk proposals",
+      },
+    ],
+    education: [
+      {
+        id: "edu_1",
+        institution: "Universitas Indonesia",
+        degree: "S1",
+        field: "Computer Science",
+        startDate: "2016-08",
+        endDate: "2020-06",
+        gpa: "3.50",
+        level: "univ",
+        thesisTitle: "Content-Based Job Recommendation System",
+        thesisDescription: "Built a recommendation prototype using TF-IDF and cosine similarity\nEvaluated on 500 job postings with 82% top-5 accuracy\nWrote 80-page thesis documenting method, experiments, and results",
+        researchTitle: "Research Assistant, AI Lab",
+        researchDescription: "Helped collect and clean 10k+ NLP data samples\nRan baseline experiments and visualized results for weekly reviews\nCo-authored an internal technical report adopted by 2 follow-up projects",
+      },
+    ],
+    skills,
+    skillGroups,
+    projects: [
+      {
+        id: "proj_1",
+        name: "Analytics Dashboard",
+        description: "Built a real-time dashboard tracking 50k+ daily events\nReduced manual reporting time from 4 hours to 15 minutes\nStack: React, WebSockets, ClickHouse",
+        url: "https://github.com/budisantoso/analytics-dashboard",
+        technologies: ["React.js", "WebSockets", "ClickHouse"],
+      },
+      {
+        id: "proj_2",
+        name: "Natural-Language Report Assistant",
+        description: "Integrated LLM API to let users query reports in plain Indonesian\nReached 70% weekly active usage among pilot team of 30 users",
+        url: "",
+        technologies: ["Next.js", "OpenAI API", "PostgreSQL"],
+      },
+      {
+        id: "proj_3",
+        name: "Portfolio Website",
+        description: "Built a responsive personal website to showcase selected work\nDeployed with a simple CI pipeline",
+        url: "https://github.com/budisantoso/portfolio",
+        technologies: ["Next.js", "Tailwind CSS"],
+      },
+    ],
+    certifications: ["Google Project Management", "AWS Certified Cloud Practitioner", "Dicoding Belajar Fundamental Aplikasi Web"],
+    achievements: [
+      "Exceeded quarterly team target by 15% in 2023",
+      "Received appreciation award for consistent on-time delivery",
+    ],
+    awards: [
+      "AWS Certified Cloud Practitioner",
+      "Google Project Management",
+      "Best Graduate — Faculty of Computer Science 2020",
+      "Exceeded quarterly team target by 15% in 2023",
+      "Speaker at React Indonesia Meetup #42",
+    ],
+    languages: ["Indonesian (native)", "English (professional working proficiency)", "Malay (conversational)"],
+  }
+}
