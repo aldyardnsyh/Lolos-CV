@@ -2,8 +2,10 @@
 // Data disimpan di Vercel KV (KV_REST_API_URL / KV_REST_API_TOKEN).
 // Fallback ke array in-memory saat dev lokal.
 
-const KV_URL = process.env.KV_REST_API_URL || process.env.KV_URL
-const KV_TOKEN = process.env.KV_REST_API_TOKEN
+// Mendukung Vercel KV maupun Upstash Redis (nama env UPSTASH_*).
+const KV_URL =
+  process.env.KV_REST_API_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_REST_URL
+const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN
 
 const KV_READY = !!(KV_URL && KV_TOKEN)
 
