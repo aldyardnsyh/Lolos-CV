@@ -170,9 +170,12 @@ export async function POST(request: NextRequest) {
     })
     return respond(response, parsed)
   } catch (error: any) {
+    // Sertakan kode penyebab (ECONNREFUSED/ENOTFOUND/ETIMEDOUT dsb., bukan
+    // data sensitif) agar error "fetch failed" yang generik bisa didiagnosis.
+    const cause = (error as any)?.cause?.code ? ` [${(error as any).cause.code}]` : ""
     // Sanitasi: jangan sampai fragmen API key (mis. dari pesan error upstream)
     // ikut terkirim ke klien.
-    const msg = String(error?.message || "Proxy gagal").replace(
+    const msg = (String(error?.message || "Proxy gagal") + cause).replace(
       /(sk-(proj|svcacct|admin|org)-[A-Za-z0-9-_]+|sk-ant-[A-Za-z0-9-_]+|sk-[A-Za-z0-9]{16,}|AIza[A-Za-z0-9-_]+|gsk_[A-Za-z0-9_]+|pplx-[A-Za-z0-9]+|AQ\.[A-Za-z0-9-_]+)/g,
       "[redacted]"
     )

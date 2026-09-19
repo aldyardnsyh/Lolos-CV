@@ -286,6 +286,7 @@ async function fetchAIResponse(
 
 export async function testConnection(config: ApiConfig): Promise<boolean> {
   try {
+    assertBaseReachable(config)
     const provider = PROVIDERS.find((p) => p.id === config.provider)
     if (!provider) return false
 
@@ -334,10 +335,35 @@ export async function testConnection(config: ApiConfig): Promise<boolean> {
   }
 }
 
+function isLocalUrl(raw: string): boolean {
+  try {
+    const h = new URL(raw).hostname.toLowerCase()
+    return h === "localhost" || h === "127.0.0.1" || h === "::1"
+  } catch {
+    return false
+  }
+}
+
+// /api/proxy berjalan di SERVER. Base URL localhost (Ollama/LM Studio)
+// hanya terjangkau saat server jalan di perangkat yang sama (dev lokal).
+// Saat app dibuka dari deploy (Vercel), server tidak bisa menjangkau
+// localhost milikmu → gagalkan cepat dengan pesan jelas, bukan 500 misterius.
+function assertBaseReachable(config: ApiConfig): void {
+  if (typeof window === "undefined") return
+  if (!config.baseUrl || !isLocalUrl(config.baseUrl)) return
+  const host = window.location.hostname.toLowerCase()
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return
+  throw new Error(
+    "Base URL localhost (mis. Ollama/LM Studio) hanya bisa diakses saat dijalankan lokal (npm run dev). " +
+    "Di versi deploy, pakai endpoint publik (mis. DeepSeek) atau jalankan server LLM di alamat yang bisa dijangkau publik."
+  )
+}
+
 async function callLLM(prompt: string, systemPrompt: string, config: ApiConfig): Promise<string> {
   const provider = PROVIDERS.find((p) => p.id === config.provider)
   if (!provider) throw new Error(`Unknown provider: ${config.provider}`)
   if (!config.baseUrl) throw new Error("Base URL belum diatur. Buka Konfigurasi API > Advanced Settings.")
+  assertBaseReachable(config)
 
   let url: string
   let body: any
