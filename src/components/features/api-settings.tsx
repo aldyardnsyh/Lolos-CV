@@ -202,21 +202,6 @@ export function ApiSettings() {
 
   const shownModels = liveModels ?? availableModels
   const isCustom = detectedProvider?.id === "custom"
-  // Base URL localhost (Ollama/LM Studio) hanya terjangkau server yang jalan
-  // di perangkat yang sama. Kalau app dibuka dari deploy, tes pasti gagal —
-  // beri tahu user lebih dulu daripada menampilkan "koneksi gagal" misterius.
-  const isLocalHostname = (h: string) =>
-    ["localhost", "127.0.0.1", "::1"].includes(h.toLowerCase())
-  const isLocalBaseUrl = (() => {
-    try {
-      return !!customBaseUrl.trim() && isLocalHostname(new URL(customBaseUrl.trim()).hostname)
-    } catch {
-      return false
-    }
-  })()
-  const isLocalAppHost =
-    typeof window !== "undefined" && isLocalHostname(window.location.hostname)
-  const showLocalhostWarning = isCustom && isLocalBaseUrl && !isLocalAppHost
   // Custom: key opsional, Base URL wajib; provider lain: key wajib
   const canTest = !!detectedProvider && (isCustom ? !!customBaseUrl.trim() : !!apiKey.trim()) && (isCustom ? !!selectedModel : true)
   // Simpan hanya bisa setelah tes koneksi berhasil — pastikan user tidak bingung
@@ -545,9 +530,6 @@ export function ApiSettings() {
                   )}
                   {testResult === false && (
                     <span className="text-xs font-medium text-red-600 dark:text-red-400">Koneksi gagal - periksa API Key, Base URL, atau model</span>
-                  )}
-                  {showLocalhostWarning && (
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Base URL localhost hanya terjangkau saat dijalankan lokal (npm run dev). Di versi deploy, pakai endpoint publik.</span>
                   )}
                 </>
               )}

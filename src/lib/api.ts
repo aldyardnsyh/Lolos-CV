@@ -147,6 +147,19 @@ export async function fetchAvailableModels(config: ApiConfig): Promise<ProviderM
   }
 
   let data: any
+  // Target localhost (Ollama / 9Router / LM Studio) → ambil langsung dari
+  // browser dulu (satu mesin dengan server lokal). Fallback ke proxy bila
+  // browser terblokir (server mati/CORS).
+  if (typeof window !== "undefined" && isLoopbackUrl(url)) {
+    try {
+      data = await directFetchJson(url, headers, null, "GET", config.provider)
+    } catch (directErr: any) {
+      if (typeof directErr?.httpStatus === "number") throw directErr
+      // Fall through ke proxy di bawah
+      data = undefined as any
+    }
+  }
+  if (data === undefined) {
     // All browser calls routed through server proxy to bypass CORS restrictions.
     // POST so auth headers stay in the body, never in the URL.
     const proxyRes = await fetch("/api/proxy", {
@@ -159,6 +172,7 @@ export async function fetchAvailableModels(config: ApiConfig): Promise<ProviderM
     const result = await proxyRes.json()
     if (result.status >= 400) throw new Error(`API Error (${config.provider}): ${result.status} - ${JSON.stringify(result.data)}`)
     data = result.data
+  }
 
   if (config.provider === "google") {
     return (data.models || [])
@@ -212,71 +226,147 @@ async function parseResponseJson(res: Response): Promise<any> {
   throw new Error(`Respons bukan JSON valid: ${raw.slice(0, 200)}`)
 }
 
+function isLoopbackUrl(raw: string): boolean {
+  try {
+    const h = new URL(raw).hostname.toLowerCase()
+    return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost")
+  } catch {
+    return false
+  }
+}
+
+function isLocalAppHost(): boolean {
+  if (typeof window === "undefined") return true
+  const h = window.location.hostname.toLowerCase()
+  return h === "localhost" || h === "127.0.0.1" || h === "::1"
+}
+
+const hostOf = (u: string) => { try { return new URL(u).host } catch { return u } }
+const authHint = (url: string, status: number) =>
+  status === 401
+    ? ` | Key ditolak oleh ${hostOf(url)}. Pastikan API key dan Base URL berasal dari layanan yang sama, lalu klik Simpan Konfigurasi.`
+    : ""
+
+// Panggil LLM langsung dari browser (tanpa proxy). Dipakai untuk target
+// localhost (Ollama / 9Router / LM Studio): request keluar dari browser user
+// yang satu mesin dengan server lokalnya — jadi tetap bekerja walau app
+// dibuka dari deploy (Vercel). Syarat: server lokal mengizinkan CORS.
+async function directFetchJson(
+  url: string,
+  headers: Record<string, string>,
+  body: any,
+  method: "GET" | "POST",
+  provider: ApiProvider,
+): Promise<any> {
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: method === "GET" ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+  })
+  if (!response.ok) {
+    const error = await response.text()
+    const e = new Error(`API Error (${provider} @ ${hostOf(url)}): ${response.status} - ${error.slice(0, 300)}${authHint(url, response.status)}`)
+    ;(e as any).httpStatus = response.status
+    throw e
+  }
+  return parseResponseJson(response)
+}
+
+// Jalur proxy (/api/proxy) dengan retry+backoff untuk error sementara.
+// Dipakai untuk endpoint publik (hindari CORS) dan sebagai fallback
+// localhost saat dev server jalan di mesin yang sama.
+async function proxyFetch(
+  url: string,
+  headers: Record<string, string>,
+  body: any,
+  provider: ApiProvider,
+): Promise<any> {
+  // Retry dengan backoff untuk error sementara (429/5xx/proxy 500). Satu
+  // transient failure tidak boleh langsung jadi error user-visible.
+  const maxRetries = 2
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 800 * attempt * attempt + Math.random() * 400))
+    }
+    try {
+      const proxyRes = await fetch("/api/proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, headers, body }),
+        signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
+      })
+      if (!proxyRes.ok) {
+        const retryable = proxyRes.status === 429 || proxyRes.status >= 500
+        const e = new Error(`Proxy error: ${proxyRes.status}`)
+        ;(e as any).retryable = retryable
+        if (!retryable) throw e
+        lastError = e
+        continue
+      }
+      const result = await proxyRes.json()
+      const upstreamStatus = Number(result?.status ?? 0)
+      if (upstreamStatus >= 400) {
+        const errDetail = typeof result.data === "object" ? JSON.stringify(result.data) : String(result.data)
+        const e = new Error(`API Error (${provider} @ ${hostOf(url)}): ${upstreamStatus} - ${errDetail}${authHint(url, upstreamStatus)}`)
+        ;(e as any).retryable = upstreamStatus === 429 || upstreamStatus >= 500
+        throw e
+      }
+      // Kalau proxy mengembalikan string (mis. hasil gabungan chunk SSE),
+      // bungkus jadi objek supaya callLLM bisa membaca .content
+      if (typeof result.data === "string") {
+        return { content: result.data }
+      }
+      return result.data
+    } catch (e: any) {
+      lastError = e
+      if (!e?.retryable) throw e
+    }
+  }
+  throw lastError || new Error("Gagal menghubungi API setelah beberapa percobaan.")
+}
+
 async function fetchAIResponse(
   url: string,
   headers: Record<string, string>,
   body: any,
   provider: ApiProvider,
 ): Promise<any> {
-  const hostOf = (u: string) => { try { return new URL(u).host } catch { return u } }
-  const authHint = (status: number) =>
-    status === 401
-      ? ` | Key ditolak oleh ${hostOf(url)}. Pastikan API key dan Base URL berasal dari layanan yang sama, lalu klik Simpan Konfigurasi.`
-      : ""
 
   // Route all requests through backend proxy in browser environments to avoid CORS issues
   const isBrowser = typeof window !== "undefined"
   try {
-    if (isBrowser) {
-      // Retry dengan backoff untuk error sementara (429/5xx/proxy 500). Satu
-      // transient failure tidak boleh langsung jadi error user-visible.
-      const maxRetries = 2
-      let lastError: Error | null = null
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (attempt > 0) {
-          await new Promise((r) => setTimeout(r, 800 * attempt * attempt + Math.random() * 400))
-        }
+    // Target localhost (Ollama / 9Router / LM Studio) → coba langsung dari
+    // browser dulu (satu mesin dengan server lokal). Kalau browser terblokir
+    // (server mati/CORS), fallback ke proxy yang berhasil bila dev server
+    // jalan di mesin yang sama.
+    if (isBrowser && isLoopbackUrl(url)) {
+      try {
+        return await directFetchJson(url, headers, body, "POST", provider)
+      } catch (directErr: any) {
+        // Server sempat menjawab (4xx/5xx) → sampaikan apa adanya, jangan
+        // ditimpa pesan "tidak terjangkau".
+        if (typeof directErr?.httpStatus === "number") throw directErr
         try {
-          const proxyRes = await fetch("/api/proxy", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, headers, body }),
-            signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
-          })
-          if (!proxyRes.ok) {
-            const retryable = proxyRes.status === 429 || proxyRes.status >= 500
-            const e = new Error(`Proxy error: ${proxyRes.status}`)
-            ;(e as any).retryable = retryable
-            if (!retryable) throw e
-            lastError = e
-            continue
-          }
-          const result = await proxyRes.json()
-          const upstreamStatus = Number(result?.status ?? 0)
-          if (upstreamStatus >= 400) {
-            const errDetail = typeof result.data === "object" ? JSON.stringify(result.data) : String(result.data)
-            const e = new Error(`API Error (${provider} @ ${hostOf(url)}): ${upstreamStatus} - ${errDetail}${authHint(upstreamStatus)}`)
-            ;(e as any).retryable = upstreamStatus === 429 || upstreamStatus >= 500
-            throw e
-          }
-          // Kalau proxy mengembalikan string (mis. hasil gabungan chunk SSE),
-          // bungkus jadi objek supaya callLLM bisa membaca .content
-          if (typeof result.data === "string") {
-            return { content: result.data }
-          }
-          return result.data
-        } catch (e: any) {
-          lastError = e
-          if (!e?.retryable) throw e
+          return await proxyFetch(url, headers, body, provider)
+        } catch {
+          throw new Error(
+            "Server lokal tidak terjangkau. Pastikan server (Ollama / 9Router / LM Studio) sedang berjalan di perangkat ini" +
+            (!isLocalAppHost() ? " dan mengizinkan akses browser (CORS), mis. OLLAMA_ORIGINS=* ollama serve" : "") +
+            "."
+          )
         }
       }
-      throw lastError || new Error("Gagal menghubungi API setelah beberapa percobaan.")
+    }
+    if (isBrowser) {
+      return await proxyFetch(url, headers, body, provider)
     }
 
     const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(LLM_TIMEOUT_MS) })
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`API Error (${provider} @ ${hostOf(url)}): ${response.status} - ${error.slice(0, 300)}${authHint(response.status)}`)
+      throw new Error(`API Error (${provider} @ ${hostOf(url)}): ${response.status} - ${error.slice(0, 300)}${authHint(url, response.status)}`)
     }
     return parseResponseJson(response)
   } catch (err: any) {
@@ -286,7 +376,6 @@ async function fetchAIResponse(
 
 export async function testConnection(config: ApiConfig): Promise<boolean> {
   try {
-    assertBaseReachable(config)
     const provider = PROVIDERS.find((p) => p.id === config.provider)
     if (!provider) return false
 
@@ -335,35 +424,10 @@ export async function testConnection(config: ApiConfig): Promise<boolean> {
   }
 }
 
-function isLocalUrl(raw: string): boolean {
-  try {
-    const h = new URL(raw).hostname.toLowerCase()
-    return h === "localhost" || h === "127.0.0.1" || h === "::1"
-  } catch {
-    return false
-  }
-}
-
-// /api/proxy berjalan di SERVER. Base URL localhost (Ollama/LM Studio)
-// hanya terjangkau saat server jalan di perangkat yang sama (dev lokal).
-// Saat app dibuka dari deploy (Vercel), server tidak bisa menjangkau
-// localhost milikmu → gagalkan cepat dengan pesan jelas, bukan 500 misterius.
-function assertBaseReachable(config: ApiConfig): void {
-  if (typeof window === "undefined") return
-  if (!config.baseUrl || !isLocalUrl(config.baseUrl)) return
-  const host = window.location.hostname.toLowerCase()
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return
-  throw new Error(
-    "Base URL localhost (mis. Ollama/LM Studio) hanya bisa diakses saat dijalankan lokal (npm run dev). " +
-    "Di versi deploy, pakai endpoint publik (mis. DeepSeek) atau jalankan server LLM di alamat yang bisa dijangkau publik."
-  )
-}
-
 async function callLLM(prompt: string, systemPrompt: string, config: ApiConfig): Promise<string> {
   const provider = PROVIDERS.find((p) => p.id === config.provider)
   if (!provider) throw new Error(`Unknown provider: ${config.provider}`)
   if (!config.baseUrl) throw new Error("Base URL belum diatur. Buka Konfigurasi API > Advanced Settings.")
-  assertBaseReachable(config)
 
   let url: string
   let body: any
