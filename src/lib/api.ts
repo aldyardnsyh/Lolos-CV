@@ -1304,17 +1304,14 @@ export async function optimizeResumeContent(resume: ResumeData, jobPosting: JobP
   if (!config) throw new Error("API not configured.")
 
   const systemPrompt = lang === "en"
-    ? "You are a professional resume writer. Optimize the resume content to better match the job posting. Return JSON. CRITICAL: preserve ALL user's original experiences, education, skills, and achievements. Only improve copywriting and grammar. NEVER fabricate data. Respond in ENGLISH."
-    : "Anda adalah penulis resume profesional. Optimalkan konten resume agar lebih cocok dengan lowongan. Kembalikan JSON. KRUSIAL: pertahankan SEMUA pengalaman, pendidikan, skill, pencapaian asli user. Hanya perbaiki copywriting. JANGAN mengarang data. Respond in INDONESIAN."
+    ? "You are a resume ARRANGER, not a rewriter. Reorder and lightly rephrase the user's EXISTING resume to match the job posting. Return JSON. FORBIDDEN: adding/removing/changing any fact (companies, positions, dates, schools, skills, projects, awards). Only the summary and item descriptions may be reworded, and item order may change. NEVER fabricate data. Respond in ENGLISH."
+    : "Anda adalah PENYUSUN resume, bukan penulis ulang. Susun ulang dan sentuh ringan redaksi resume YANG SUDAH ADA agar cocok dengan lowongan. Kembalikan JSON. DILARANG: menambah/menghapus/mengubah fakta apa pun (perusahaan, posisi, tanggal, institusi, skill, proyek, awards). Yang boleh berubah hanya ringkasan, deskripsi item, dan URUTAN item. JANGAN mengarang data. Respond in INDONESIAN."
 
-  const prompt = `Optimalkan resume ini untuk lowongan berikut. Aturan:
-1. Pertahankan 90%+ konten asli user, jangan hapus atau ganti pengalaman/skill yang dimiliki.
-2. Jangan mengarang pengalaman atau skill baru yang tidak ada di resume.
-3. Perbaiki copywriting: grammar, kalimat lebih profesional, gunakan action verbs.
-4. Masukkan keyword dari lowongan hanya jika RELEVAN dengan pengalaman user yang sebenarnya.
-5. Ringkasan profesional highlight relevansi dengan posisi.
-6. Deskripsi pengalaman diperbaiki dengan keywords dari lowongan yang cocok dengan pekerjaan user.
-7. Urutkan skill berdasarkan prioritas kecocokan.
+  const prompt = `Susun ulang (BUKAN tulis ulang) resume ini agar cocok dengan lowongan. Tugasmu menyusun, bukan mengarang:
+1. WAJIB pertahankan SEMUA entri asli: jumlah pengalaman, organisasi, pendidikan, proyek, skill, awards, bahasa harus SAMA PERSIS. Dilarang menambah atau menghapus entri.
+2. DILARANG mengubah fakta: nama perusahaan, posisi, lokasi, tanggal, institusi, gelar, IPK, nama skill, nama proyek, URL, teknologi, awards, bahasa.
+3. Yang BOLEH: (a) ringkasan ditulis ulang menonjolkan relevansi dengan posisi; (b) deskripsi pengalaman/organisasi/proyek/thesis/riset diperbaiki redaksinya (grammar, action verbs, angka yang SUDAH ADA dipertahankan); (c) keyword lowongan disisipkan HANYA bila relevan dengan pekerjaan user yang sebenarnya; (d) URUTAN bullet/skill diubah sesuai prioritas kecocokan.
+4. Jika keyword lowongan tidak cocok dengan pengalaman user, JANGAN dipaksakan — biarkan apa adanya.
 
 Kembalikan JSON dengan format:
 {
@@ -1328,8 +1325,95 @@ LOWONGAN: ${JSON.stringify(jobPosting, null, 2)}`
 
   const parsed = await extractJsonFromLLM<{ optimized?: any; changes?: string[] }>(prompt, systemPrompt, config)
   return {
-    optimized: normalizeResumeData(parsed?.optimized),
+    optimized: preserveOriginalFacts(resume, normalizeResumeData(parsed?.optimized)),
     changes: toArray<string>(parsed?.changes).map(String).filter(Boolean),
+  }
+}
+
+// Pengaman keras anti-fabrikasi: optimasi hanya boleh MENYUSUN ULANG &
+// memperbaiki redaksi, tidak boleh menambah/menghapus/mengubah FAKTA.
+// - Entri yang dihilangkan LLM dikembalikan dari aslinya.
+// - Field fakta (perusahaan, posisi, tanggal, institusi, gelar, nama skill,
+//   nama proyek, URL, teknologi, awards, bahasa) dikunci dari data asli.
+// - Yang boleh berubah: ringkasan, deskripsi pengalaman/organisasi/proyek,
+//   deskripsi thesis/riset, dan URUTAN item (diurutkan ulang sesuai hasil LLM).
+export function preserveOriginalFacts(original: ResumeData, optimized: ResumeData): ResumeData {
+  const byId = <T extends { id: string }>(list: T[]): Map<string, T> =>
+    new Map(list.map((x) => [x.id, x]))
+
+  const origExp = byId(original.experiences)
+  const experiences = [
+    ...optimized.experiences
+      .filter((e) => origExp.has(e.id))
+      .map((e) => {
+        const o = origExp.get(e.id)!
+        return { ...e, company: o.company, position: o.position, location: o.location, startDate: o.startDate, endDate: o.endDate, current: o.current }
+      }),
+    ...original.experiences.filter((e) => !optimized.experiences.some((x) => x.id === e.id)),
+  ]
+
+  const origOrg = byId(original.organizations ?? [])
+  const organizations = [
+    ...(optimized.organizations ?? [])
+      .filter((o) => origOrg.has(o.id))
+      .map((o) => {
+        const orig = origOrg.get(o.id)!
+        return { ...o, organization: orig.organization, position: orig.position, location: orig.location, startDate: orig.startDate, endDate: orig.endDate, current: orig.current }
+      }),
+    ...(original.organizations ?? []).filter((o) => !(optimized.organizations ?? []).some((x) => x.id === o.id)),
+  ]
+
+  const origEdu = byId(original.education)
+  const education = [
+    ...optimized.education
+      .filter((e) => origEdu.has(e.id))
+      .map((e) => {
+        const o = origEdu.get(e.id)!
+        return { ...e, institution: o.institution, degree: o.degree, field: o.field, startDate: o.startDate, endDate: o.endDate, gpa: o.gpa, level: o.level, thesisTitle: o.thesisTitle, researchTitle: o.researchTitle }
+      }),
+    ...original.education.filter((e) => !optimized.education.some((x) => x.id === e.id)),
+  ]
+
+  // Skill: nama item harus subset dari aslinya (judul grup boleh baru).
+  const origNames = new Set([
+    ...original.skills.map((s) => s.name.trim().toLowerCase()),
+    ...(original.skillGroups ?? []).flatMap((g) => g.items.map((x) => x.trim().toLowerCase())),
+  ])
+  const skillGroups = (optimized.skillGroups ?? [])
+    .map((g) => ({ ...g, items: g.items.filter((x) => origNames.has(x.trim().toLowerCase())) }))
+    .filter((g) => g.title.trim() || g.items.length > 0)
+  const skills = optimized.skills.filter((s) => origNames.has(s.name.trim().toLowerCase()))
+
+  const origProj = byId(original.projects)
+  const projects = [
+    ...optimized.projects
+      .filter((p) => origProj.has(p.id))
+      .map((p) => {
+        const o = origProj.get(p.id)!
+        return { ...p, name: o.name, url: o.url, technologies: o.technologies }
+      }),
+    ...original.projects.filter((p) => !optimized.projects.some((x) => x.id === p.id)),
+  ]
+
+  // Awards & bahasa: hanya yang sudah ada di aslinya (tidak boleh nambah).
+  const origAwards = new Set([...original.awards, ...original.certifications, ...original.achievements].map((x) => x.trim().toLowerCase()))
+  const awards = optimized.awards.filter((a) => origAwards.has(a.trim().toLowerCase()))
+  const origLang = new Set(original.languages.map((x) => x.trim().toLowerCase()))
+  const languages = optimized.languages.filter((l) => origLang.has(l.trim().toLowerCase()))
+
+  return {
+    ...optimized,
+    personalInfo: { ...optimized.personalInfo, fullName: original.personalInfo.fullName, email: original.personalInfo.email, phone: original.personalInfo.phone, linkedin: original.personalInfo.linkedin, portfolio: original.personalInfo.portfolio, photo: original.personalInfo.photo },
+    experiences,
+    organizations,
+    education,
+    skills: skills.length > 0 ? skills : original.skills,
+    skillGroups: skillGroups.length > 0 ? skillGroups : original.skillGroups,
+    projects,
+    certifications: original.certifications,
+    achievements: original.achievements,
+    awards: awards.length > 0 ? awards : original.awards,
+    languages: languages.length > 0 ? languages : original.languages,
   }
 }
 
@@ -1485,7 +1569,7 @@ RESUME:
 ${JSON.stringify(resumeData, null, 2)}
 
 Berikan analisis ATS yang detail dan versi resume yang dioptimalkan dengan keywords dari lowongan.
-Jaga kejujuran data - jangan tambahkan pengalaman atau skill palsu yang tidak ada di resume asli.`
+Versi optimasi hanya MENYUSUN ULANG, bukan menulis ulang: jumlah entri dan semua fakta (perusahaan, posisi, tanggal, institusi, skill, proyek, awards) WAJIB sama persis dengan resume asli. Jangan tambahkan pengalaman atau skill palsu yang tidak ada di resume asli.`
 
   const parsed = await extractJsonFromLLM<{ analysis?: any; optimized?: any }>(prompt, systemPrompt, config)
   let host = ""
@@ -1493,6 +1577,6 @@ Jaga kejujuran data - jangan tambahkan pengalaman atau skill palsu yang tidak ad
   const exclude = buildExclusionTerms(jobPosting.companyName, jobPosting.location, host)
   return {
     analysis: normalizeAtsAnalysis(parsed?.analysis, exclude),
-    optimized: normalizeResumeData(parsed?.optimized),
+    optimized: preserveOriginalFacts(resumeData, normalizeResumeData(parsed?.optimized)),
   }
 }
