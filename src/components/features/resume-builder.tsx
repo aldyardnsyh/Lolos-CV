@@ -1210,8 +1210,8 @@ export function ResumeBuilder() {
                           <div style={{ order: orderOf("education") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("education", resumeLang)}</h3>
                             {resume.education.map((edu) => (
-                              <div key={edu.id} className="flex justify-between items-start mb-0.5 print:break-inside-avoid">
-                                <div>
+                              <div key={edu.id} className="flex justify-between items-start gap-2 mb-0.5 print:break-inside-avoid">
+                                <div className="flex-1 min-w-0">
                                   <p className="text-[11px] font-bold uppercase tracking-wide text-gray-900">{edu.institution}</p>
                                   {eduMeta(edu, resumeLang) && <p className="text-[10px] italic text-gray-600">{eduMeta(edu, resumeLang)}</p>}
                                   {edu.thesisTitle && (
@@ -1410,8 +1410,8 @@ export function ResumeBuilder() {
                           <div style={{ order: orderOf("education") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("education", resumeLang)}</h3>
                             {resume.education.map((edu) => (
-                              <div key={edu.id} className="flex justify-between items-start mb-0.5 print:break-inside-avoid">
-                                <div>
+                              <div key={edu.id} className="flex justify-between items-start gap-2 mb-0.5 print:break-inside-avoid">
+                                <div className="flex-1 min-w-0">
                                   <p className="text-[11px] font-bold uppercase tracking-wide text-gray-900">{edu.institution}</p>
                                   {eduMeta(edu, resumeLang) && <p className="text-[10px] italic text-gray-600">{eduMeta(edu, resumeLang)}</p>}
                                   {edu.thesisTitle && (
@@ -1719,8 +1719,8 @@ export function ResumeBuilder() {
                             <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: pal.main }}>{getSectionLabel("education", resumeLang)}</h3>
                             <div className="space-y-1.5">
                               {resume.education.map((edu) => (
-                                <div key={edu.id} className="flex justify-between items-start border-b border-gray-100 pb-1.5 print:break-inside-avoid">
-                                  <div>
+                                <div key={edu.id} className="flex justify-between items-start gap-2 border-b border-gray-100 pb-1.5 print:break-inside-avoid">
+                                  <div className="flex-1 min-w-0">
                                     <p className="text-sm font-semibold">{edu.institution}</p>
                                     {eduMeta(edu, resumeLang) && <p className="text-[11px] text-muted-foreground">{eduMeta(edu, resumeLang)}</p>}
                                     {edu.thesisTitle && (
