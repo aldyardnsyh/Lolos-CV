@@ -1210,36 +1210,38 @@ export function ResumeBuilder() {
                           <div style={{ order: orderOf("education") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("education", resumeLang)}</h3>
                             {resume.education.map((edu) => (
-                              <div key={edu.id} className="flex justify-between items-start gap-2 mb-0.5 print:break-inside-avoid">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-900">{edu.institution}</p>
-                                  {eduMeta(edu, resumeLang) && <p className="text-[10px] italic text-gray-600">{eduMeta(edu, resumeLang)}</p>}
-                                  {edu.thesisTitle && (
-                                    <p className="text-[10px] text-gray-700 mt-0.5">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Thesis: " : "Skripsi: "}</span>{edu.thesisTitle}
-                                    </p>
-                                  )}
-                                  {edu.thesisDescription && (
-                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                      {bulletLines(edu.thesisDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                  {edu.researchTitle && (
-                                    <p className="text-[10px] text-gray-700 mt-0.5">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                    </p>
-                                  )}
-                                  {edu.researchDescription && (
-                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                      {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
-                                      ))}
-                                    </ul>
-                                  )}
+                              <div key={edu.id} className="mb-1 print:break-inside-avoid">
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-900">{edu.institution}</p>
+                                    {eduMeta(edu, resumeLang) && <p className="text-[10px] italic text-gray-600">{eduMeta(edu, resumeLang)}</p>}
+                                  </div>
+                                  <p className="text-[9px] italic text-gray-500 shrink-0 ml-2 whitespace-nowrap">{formatResumeDate(edu.startDate)} - {formatResumeDate(edu.endDate)}</p>
                                 </div>
-                                <p className="text-[9px] italic text-gray-500 shrink-0 ml-2 whitespace-nowrap">{formatResumeDate(edu.startDate)} - {formatResumeDate(edu.endDate)}</p>
+                                {edu.thesisTitle && (
+                                  <p className="text-[10px] text-gray-700 mt-0.5">
+                                    <span className="font-semibold">{resumeLang === "en" ? "Thesis: " : "Skripsi: "}</span>{edu.thesisTitle}
+                                  </p>
+                                )}
+                                {edu.thesisDescription && (
+                                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                                    {bulletLines(edu.thesisDescription).map((line, i) => (
+                                      <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {edu.researchTitle && (
+                                  <p className="text-[10px] text-gray-700 mt-0.5">
+                                    <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
+                                  </p>
+                                )}
+                                {edu.researchDescription && (
+                                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                                    {bulletLines(edu.researchDescription).map((line, i) => (
+                                      <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1410,36 +1412,38 @@ export function ResumeBuilder() {
                           <div style={{ order: orderOf("education") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("education", resumeLang)}</h3>
                             {resume.education.map((edu) => (
-                              <div key={edu.id} className="flex justify-between items-start gap-2 mb-0.5 print:break-inside-avoid">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-900">{edu.institution}</p>
-                                  {eduMeta(edu, resumeLang) && <p className="text-[10px] italic text-gray-600">{eduMeta(edu, resumeLang)}</p>}
-                                  {edu.thesisTitle && (
-                                    <p className="text-[10px] text-gray-700 mt-0.5">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Thesis: " : "Skripsi: "}</span>{edu.thesisTitle}
-                                    </p>
-                                  )}
-                                  {edu.thesisDescription && (
-                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                      {bulletLines(edu.thesisDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                  {edu.researchTitle && (
-                                    <p className="text-[10px] text-gray-700 mt-0.5">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                    </p>
-                                  )}
-                                  {edu.researchDescription && (
-                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                      {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
-                                      ))}
-                                    </ul>
-                                  )}
+                              <div key={edu.id} className="mb-1 print:break-inside-avoid">
+                                <div className="flex justify-between items-start gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-gray-900">{edu.institution}</p>
+                                    {eduMeta(edu, resumeLang) && <p className="text-[10px] italic text-gray-600">{eduMeta(edu, resumeLang)}</p>}
+                                  </div>
+                                  <p className="text-[9px] italic text-gray-500 shrink-0 ml-2 whitespace-nowrap">{formatResumeDate(edu.startDate)} - {formatResumeDate(edu.endDate)}</p>
                                 </div>
-                                <p className="text-[9px] italic text-gray-500 shrink-0 ml-2 whitespace-nowrap">{formatResumeDate(edu.startDate)} - {formatResumeDate(edu.endDate)}</p>
+                                {edu.thesisTitle && (
+                                  <p className="text-[10px] text-gray-700 mt-0.5">
+                                    <span className="font-semibold">{resumeLang === "en" ? "Thesis: " : "Skripsi: "}</span>{edu.thesisTitle}
+                                  </p>
+                                )}
+                                {edu.thesisDescription && (
+                                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                                    {bulletLines(edu.thesisDescription).map((line, i) => (
+                                      <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                                {edu.researchTitle && (
+                                  <p className="text-[10px] text-gray-700 mt-0.5">
+                                    <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
+                                  </p>
+                                )}
+                                {edu.researchDescription && (
+                                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                                    {bulletLines(edu.researchDescription).map((line, i) => (
+                                      <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1719,36 +1723,38 @@ export function ResumeBuilder() {
                             <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: pal.main }}>{getSectionLabel("education", resumeLang)}</h3>
                             <div className="space-y-1.5">
                               {resume.education.map((edu) => (
-                                <div key={edu.id} className="flex justify-between items-start gap-2 border-b border-gray-100 pb-1.5 print:break-inside-avoid">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold">{edu.institution}</p>
-                                    {eduMeta(edu, resumeLang) && <p className="text-[11px] text-muted-foreground">{eduMeta(edu, resumeLang)}</p>}
-                                    {edu.thesisTitle && (
-                                      <p className="text-[11px] mt-1">
-                                        <span className="font-semibold">{resumeLang === "en" ? "Thesis: " : "Skripsi: "}</span>{edu.thesisTitle}
-                                      </p>
-                                    )}
-                                    {edu.thesisDescription && (
+                                <div key={edu.id} className="border-b border-gray-100 pb-1.5 print:break-inside-avoid">
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold">{edu.institution}</p>
+                                      {eduMeta(edu, resumeLang) && <p className="text-[11px] text-muted-foreground">{eduMeta(edu, resumeLang)}</p>}
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground shrink-0 ml-2">{formatResumeDate(edu.startDate)} - {formatResumeDate(edu.endDate)}</p>
+                                  </div>
+                                  {edu.thesisTitle && (
+                                    <p className="text-[11px] mt-1">
+                                      <span className="font-semibold">{resumeLang === "en" ? "Thesis: " : "Skripsi: "}</span>{edu.thesisTitle}
+                                    </p>
+                                  )}
+                                  {edu.thesisDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.thesisDescription).map((line, i) => (
                                         <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
-                                    {edu.researchTitle && (
-                                      <p className="text-[11px] mt-1">
-                                        <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                      </p>
-                                    )}
-                                    {edu.researchDescription && (
+                                  {edu.researchTitle && (
+                                    <p className="text-[11px] mt-1">
+                                      <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
+                                    </p>
+                                  )}
+                                  {edu.researchDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.researchDescription).map((line, i) => (
                                         <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
-                                  </div>
-                                  <p className="text-[10px] text-muted-foreground shrink-0 ml-2">{formatResumeDate(edu.startDate)} - {formatResumeDate(edu.endDate)}</p>
                                 </div>
                               ))}
                             </div>
