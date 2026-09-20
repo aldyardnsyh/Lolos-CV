@@ -1187,7 +1187,7 @@ export function ResumeBuilder() {
                                   <p className="text-[11px] font-bold text-gray-900">
                                     {proj.name}
                                     {(proj.technologies ?? []).length > 0 && (
-                                      <span className="font-normal text-gray-700"> | {(proj.technologies ?? []).join(" | ")}</span>
+                                      <span className="font-normal text-gray-700"> | {(proj.technologies ?? []).join(", ")}</span>
                                     )}
                                     {proj.url && (
                                       <span className="font-normal"> | <a href={asHref(proj.url)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
@@ -1387,7 +1387,7 @@ export function ResumeBuilder() {
                                   <p className="text-[11px] font-bold text-gray-900">
                                     {proj.name}
                                     {(proj.technologies ?? []).length > 0 && (
-                                      <span className="font-normal text-gray-700"> | {(proj.technologies ?? []).join(" | ")}</span>
+                                      <span className="font-normal text-gray-700"> | {(proj.technologies ?? []).join(", ")}</span>
                                     )}
                                     {proj.url && (
                                       <span className="font-normal"> | <a href={asHref(proj.url)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
@@ -1597,7 +1597,7 @@ export function ResumeBuilder() {
                                   <p className="text-sm font-bold">
                                     {proj.name}
                                     {(proj.technologies ?? []).length > 0 && (
-                                      <span className="font-medium text-[11px]" style={{ color: pal.main }}> | {(proj.technologies ?? []).join(" | ")}</span>
+                                      <span className="font-medium text-[11px]" style={{ color: pal.main }}> | {(proj.technologies ?? []).join(", ")}</span>
                                     )}
                                     {proj.url && (
                                       <span className="text-[11px] font-medium"> | <a
@@ -1827,7 +1827,7 @@ export function ResumeBuilder() {
                                   <p className="text-sm font-semibold">
                                     {proj.name}
                                     {(proj.technologies ?? []).length > 0 && (
-                                      <span className="font-normal text-[11px] text-muted-foreground"> | {(proj.technologies ?? []).join(" | ")}</span>
+                                      <span className="font-normal text-[11px] text-muted-foreground"> | {(proj.technologies ?? []).join(", ")}</span>
                                     )}
                                     {proj.url && (
                                       <span className="font-normal text-[11px]"> | <a href={asHref(proj.url)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 text-muted-foreground">{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
