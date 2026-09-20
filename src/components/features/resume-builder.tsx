@@ -298,9 +298,16 @@ export function ResumeBuilder() {
 
   const togglePreview = () => {
     setPreview((p) => !p)
-    requestAnimationFrame(() => {
-      document.getElementById("builder")?.scrollIntoView({ behavior: "smooth", block: "start" })
-    })
+  }
+
+  const handleToolbarDownload = () => {
+    if (exportingPdf) return
+    if (!preview) {
+      setPreview(true)
+      window.setTimeout(() => setShowSupportPrompt(true), 400)
+    } else {
+      setShowSupportPrompt(true)
+    }
   }
 
   // Generate bersifat destruktif (replace seluruh isi) → minta konfirmasi
@@ -942,6 +949,63 @@ export function ResumeBuilder() {
                   </button>
                 </div>
               </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap mt-2">
+              <select
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value as ResumeTemplate)}
+                title={resumeLang === "en" ? "Template" : "Template"}
+                aria-label="Template"
+                className="text-xs font-medium border border-border rounded-lg px-2 py-1.5 bg-background hover:border-primary/50 transition-colors cursor-pointer max-w-[150px]"
+              >
+                {(Object.entries(templateStyles) as [ResumeTemplate, TemplateStyle][]).map(([key, t]) => (
+                  <option key={key} value={key}>{t.name}</option>
+                ))}
+              </select>
+              <select
+                value={cvFont}
+                onChange={(e) => setCvFont(e.target.value as CvFont)}
+                title={resumeLang === "en" ? "Font" : "Font"}
+                aria-label="Font"
+                className="text-xs font-medium border border-border rounded-lg px-2 py-1.5 bg-background hover:border-primary/50 transition-colors cursor-pointer max-w-[130px]"
+              >
+                {(Object.keys(FONT_STACKS) as CvFont[]).map((f) => (
+                  <option key={f} value={f}>{resumeLang === "en" ? FONT_LABELS_EN[f] : FONT_LABELS_ID[f]}</option>
+                ))}
+              </select>
+              <select
+                value={cvSize}
+                onChange={(e) => setCvSize(e.target.value as CvFontSize)}
+                title={resumeLang === "en" ? "Size" : "Ukuran"}
+                aria-label="Size"
+                className="text-xs font-medium border border-border rounded-lg px-2 py-1.5 bg-background hover:border-primary/50 transition-colors cursor-pointer"
+              >
+                {(Object.keys(FONT_SCALE) as CvFontSize[]).map((s) => (
+                  <option key={s} value={s}>{resumeLang === "en" ? SIZE_LABELS_EN[s] : SIZE_LABELS_ID[s]}</option>
+                ))}
+              </select>
+              {(selectedTemplate === "creative" || selectedTemplate === "modern") && (
+                <div className="flex items-center gap-1" title={resumeLang === "en" ? "Accent color" : "Warna aksen"}>
+                  {ACCENT_PALETTES.map((p, i) => (
+                    <button
+                      key={p.name}
+                      onClick={() => setAccentIdx(i)}
+                      title={resumeLang === "en" ? p.name : p.nameId}
+                      aria-label={resumeLang === "en" ? p.name : p.nameId}
+                      className={cn(
+                        "w-5 h-5 rounded-full border-2 transition-all",
+                        accentIdx === i ? "ring-2 ring-offset-1 ring-primary border-transparent" : "border-border"
+                      )}
+                      style={{ backgroundColor: p.main }}
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="flex-1" />
+              <Button size="sm" className="gap-2" onClick={handleToolbarDownload} disabled={exportingPdf}>
+                {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                PDF
+              </Button>
             </div>
             </div>
 
@@ -2245,96 +2309,9 @@ export function ResumeBuilder() {
                 </CardContent>
               </Card>
 
-              <Card className="border-border/50 mt-4">
-                <CardHeader>
-                  <CardTitle className="text-sm">{resumeLang === "en" ? "Typography" : "Tipografi"}</CardTitle>
-                  <CardDescription>{resumeLang === "en" ? "Font and size apply to preview & PDF" : "Font dan ukuran berlaku di preview & PDF"}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Gaya Font</p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {(Object.keys(FONT_STACKS) as CvFont[]).map((f) => (
-                        <button
-                          key={f}
-                          onClick={() => setCvFont(f)}
-                          style={{ fontFamily: FONT_STACKS[f] }}
-                          className={cn(
-                            "px-2 py-1.5 rounded-lg border text-xs font-medium transition-all",
-                            cvFont === f ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                          )}
-                        >
-                          {(resumeLang === "en" ? FONT_LABELS_EN[f] : FONT_LABELS_ID[f])}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Ukuran</p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {(Object.keys(FONT_SCALE) as CvFontSize[]).map((s) => (
-                        <button
-                          key={s}
-                          onClick={() => setCvSize(s)}
-                          className={cn(
-                            "px-2 py-1.5 rounded-lg border text-xs font-medium transition-all",
-                            cvSize === s ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/50"
-                          )}
-                        >
-                          {(resumeLang === "en" ? SIZE_LABELS_EN[s] : SIZE_LABELS_ID[s])}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {(selectedTemplate === "creative" || selectedTemplate === "modern") && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Palet Warna</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ACCENT_PALETTES.map((p, i) => (
-                          <button
-                            key={p.name}
-                            onClick={() => setAccentIdx(i)}
-                            title={resumeLang === "en" ? p.name : p.nameId}
-                            className={cn(
-                              "w-7 h-7 rounded-full border-2 transition-all",
-                              accentIdx === i ? "ring-2 ring-offset-2 ring-primary border-transparent" : "border-border"
-                            )}
-                            style={{ backgroundColor: p.main }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-muted-foreground">
-                    Judul section otomatis lebih besar + tebal dari isi agar hierarki jelas.
-                  </p>
-                </CardContent>
-              </Card>
+              
 
-              <Card className="border-border/50 mt-4">
-                <CardHeader>
-                  <CardTitle className="text-sm">{resumeLang === "en" ? "Template" : "Template"}</CardTitle>
-                  <CardDescription>{resumeLang === "en" ? "Choose resume layout" : "Pilih layout resume"}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.entries(templateStyles) as [ResumeTemplate, TemplateStyle][]).map(([key, t]) => (
-                      <button
-                        key={key}
-                        onClick={() => setSelectedTemplate(key)}
-                        className={cn(
-                          "p-3 rounded-xl border-2 text-center transition-all duration-200",
-                          selectedTemplate === key ? `${t.border} ${t.bg}` : "border-border hover:border-primary/50"
-                        )}
-                      >
-                        <div className={cn("w-full h-1.5 rounded-full mb-1", t.color)} />
-                        <span className="text-xs font-medium">{t.name}</span>
-                        <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{t.desc}</p>
-                      </button>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+              
 
               <Card className="border-border/50 mt-4">
                 <CardHeader>
