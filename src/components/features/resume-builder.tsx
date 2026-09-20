@@ -142,6 +142,12 @@ function bulletLines(text: string | undefined | null): string[] {
   return String(text ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
 }
 
+function asHref(u: string | undefined | null): string {
+  const t = String(u ?? "").trim()
+  if (!t) return ""
+  return /^https?:\/\//i.test(t) ? t : `https://${t}`
+}
+
 function eduMeta(edu: ResumeEducation, lang: "id" | "en" = "en"): string {
   const parts = [edu.degree, edu.field].map((v) => (v || "").trim()).filter(Boolean)
   let s = parts.join(" - ")
@@ -1095,9 +1101,16 @@ export function ResumeBuilder() {
                           <p className="text-[10px] text-gray-600 mt-1">
                             {[resume.personalInfo.location, resume.personalInfo.phone && `P: ${resume.personalInfo.phone}`, resume.personalInfo.email].filter(Boolean).join(" | ")}
                           </p>
-                          <p className="text-[9px] text-gray-500">
-                            {[resume.personalInfo.linkedin, resume.personalInfo.portfolio].filter(Boolean).join(" | ")}
-                          </p>
+                          {[resume.personalInfo.linkedin, resume.personalInfo.portfolio].filter(Boolean).length > 0 && (
+                            <p className="text-[9px] text-gray-500">
+                              {[resume.personalInfo.linkedin, resume.personalInfo.portfolio].filter(Boolean).map((link, i, arr) => (
+                                <span key={i}>
+                                  <a href={asHref(link)} target="_blank" rel="noopener noreferrer" className="hover:underline underline-offset-2">{link}</a>
+                                  {i < arr.length - 1 ? " | " : ""}
+                                </span>
+                              ))}
+                            </p>
+                          )}
                         </div>
                         {isSectionVisible("summary") && resume.summary && (
                           <div style={{ order: orderOf("summary") }}>
@@ -1173,7 +1186,12 @@ export function ResumeBuilder() {
                                 <div key={proj.id} className="print:break-inside-avoid">
                                   <p className="text-[11px] font-bold text-gray-900">
                                     {proj.name}
-                                    {proj.url && <span className="font-normal text-gray-500"> — {proj.url}</span>}
+                                    {(proj.technologies ?? []).length > 0 && (
+                                      <span className="font-normal text-gray-700"> | {(proj.technologies ?? []).join(" | ")}</span>
+                                    )}
+                                    {proj.url && (
+                                      <span className="font-normal"> | <a href={asHref(proj.url)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
+                                    )}
                                   </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
@@ -1182,12 +1200,7 @@ export function ResumeBuilder() {
                                       ))}
                                     </ul>
                                   )}
-                                  {(proj.technologies ?? []).length > 0 && (
-                                    <p className="text-[10px] text-gray-600 mt-0.5">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Tech: " : "Teknologi: "}</span>
-                                      {(proj.technologies ?? []).join(" | ")}
-                                    </p>
-                                  )}
+
                                 </div>
                               ))}
                             </div>
@@ -1287,9 +1300,16 @@ export function ResumeBuilder() {
                             <p className="text-[11px] text-gray-600 mt-1.5">
                               {[resume.personalInfo.location, resume.personalInfo.phone && `P: ${resume.personalInfo.phone}`, resume.personalInfo.email].filter(Boolean).join(" | ")}
                             </p>
-                            <p className="text-[10px] text-gray-500 mt-1">
-                              {[resume.personalInfo.linkedin, resume.personalInfo.portfolio].filter(Boolean).join(" | ")}
-                            </p>
+                            {[resume.personalInfo.linkedin, resume.personalInfo.portfolio].filter(Boolean).length > 0 && (
+                              <p className="text-[10px] text-gray-500 mt-1">
+                                {[resume.personalInfo.linkedin, resume.personalInfo.portfolio].filter(Boolean).map((link, i, arr) => (
+                                  <span key={i}>
+                                    <a href={asHref(link)} target="_blank" rel="noopener noreferrer" className="hover:underline underline-offset-2">{link}</a>
+                                    {i < arr.length - 1 ? " | " : ""}
+                                  </span>
+                                ))}
+                              </p>
+                            )}
                           </div>
                         </div>
                         {isSectionVisible("summary") && resume.summary && (
@@ -1366,7 +1386,12 @@ export function ResumeBuilder() {
                                 <div key={proj.id} className="print:break-inside-avoid">
                                   <p className="text-[11px] font-bold text-gray-900">
                                     {proj.name}
-                                    {proj.url && <span className="font-normal text-gray-500"> — {proj.url}</span>}
+                                    {(proj.technologies ?? []).length > 0 && (
+                                      <span className="font-normal text-gray-700"> | {(proj.technologies ?? []).join(" | ")}</span>
+                                    )}
+                                    {proj.url && (
+                                      <span className="font-normal"> | <a href={asHref(proj.url)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
+                                    )}
                                   </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
@@ -1375,12 +1400,7 @@ export function ResumeBuilder() {
                                       ))}
                                     </ul>
                                   )}
-                                  {(proj.technologies ?? []).length > 0 && (
-                                    <p className="text-[10px] text-gray-600 mt-0.5">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Tech: " : "Teknologi: "}</span>
-                                      {(proj.technologies ?? []).join(" | ")}
-                                    </p>
-                                  )}
+
                                 </div>
                               ))}
                             </div>
@@ -1576,16 +1596,17 @@ export function ResumeBuilder() {
                                 <div key={proj.id} className="p-2.5 rounded-xl border print:break-inside-avoid" style={{ borderColor: pal.main, backgroundColor: pal.soft }}>
                                   <p className="text-sm font-bold">
                                     {proj.name}
+                                    {(proj.technologies ?? []).length > 0 && (
+                                      <span className="font-medium text-[11px]" style={{ color: pal.main }}> | {(proj.technologies ?? []).join(" | ")}</span>
+                                    )}
                                     {proj.url && (
-                                      <a
-                                        href={/^https?:\/\//i.test(proj.url) ? proj.url : `https://${proj.url}`}
+                                      <span className="text-[11px] font-medium"> | <a
+                                        href={asHref(proj.url)}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="ml-2 text-[11px] font-medium underline underline-offset-2"
+                                        className="underline underline-offset-2"
                                         style={{ color: pal.main }}
-                                      >
-                                        {proj.url}
-                                      </a>
+                                      >{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
                                     )}
                                   </p>
                                   {proj.description && (
@@ -1595,11 +1616,7 @@ export function ResumeBuilder() {
                                       ))}
                                     </ul>
                                   )}
-                                  {(proj.technologies ?? []).length > 0 && (
-                                    <p className="text-[11px] font-semibold mt-1.5" style={{ color: pal.main }}>
-                                      {(proj.technologies ?? []).join(" | ")}
-                                    </p>
-                                  )}
+
                                 </div>
                               ))}
                             </div>
@@ -1657,8 +1674,12 @@ export function ResumeBuilder() {
                           {resume.personalInfo.email && <span>{resume.personalInfo.email}</span>}
                           {resume.personalInfo.phone && <span>{resume.personalInfo.phone}</span>}
                           {resume.personalInfo.location && <span>{resume.personalInfo.location}</span>}
-                          {resume.personalInfo.linkedin && <span>{resume.personalInfo.linkedin}</span>}
-                          {resume.personalInfo.portfolio && <span>{resume.personalInfo.portfolio}</span>}
+                          {resume.personalInfo.linkedin && (
+                            <a href={asHref(resume.personalInfo.linkedin)} target="_blank" rel="noopener noreferrer" className="hover:underline underline-offset-2">{resume.personalInfo.linkedin}</a>
+                          )}
+                          {resume.personalInfo.portfolio && (
+                            <a href={asHref(resume.personalInfo.portfolio)} target="_blank" rel="noopener noreferrer" className="hover:underline underline-offset-2">{resume.personalInfo.portfolio}</a>
+                          )}
                         </div>
                       </div>
                       <div className="p-5 gap-3 flex flex-col">
@@ -1805,7 +1826,12 @@ export function ResumeBuilder() {
                                 <div key={proj.id} className="print:break-inside-avoid">
                                   <p className="text-sm font-semibold">
                                     {proj.name}
-                                    {proj.url && <span className="font-normal text-[11px] text-muted-foreground"> — {proj.url}</span>}
+                                    {(proj.technologies ?? []).length > 0 && (
+                                      <span className="font-normal text-[11px] text-muted-foreground"> | {(proj.technologies ?? []).join(" | ")}</span>
+                                    )}
+                                    {proj.url && (
+                                      <span className="font-normal text-[11px]"> | <a href={asHref(proj.url)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 text-muted-foreground">{resumeLang === "en" ? "Portfolio Link" : "Link Portofolio"}</a></span>
+                                    )}
                                   </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
@@ -1814,12 +1840,7 @@ export function ResumeBuilder() {
                                       ))}
                                     </ul>
                                   )}
-                                  {(proj.technologies ?? []).length > 0 && (
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                      <span className="font-semibold text-foreground">{resumeLang === "en" ? "Tech: " : "Teknologi: "}</span>
-                                      {(proj.technologies ?? []).join(" | ")}
-                                    </p>
-                                  )}
+
                                 </div>
                               ))}
                             </div>
