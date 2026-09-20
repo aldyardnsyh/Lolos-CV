@@ -56,6 +56,7 @@ function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAn
     ...safeArr<any>(resume?.skills).map((s) => `${s?.name ?? ""} ${s?.level ?? ""}`),
     ...safeArr<any>((resume as any)?.skillGroups).flatMap((g: any) => [g?.title ?? "", ...safeArr(g?.items)]),
     ...safeArr(resume?.certifications),
+    ...safeArr<any>((resume as any)?.awards).map((a) => typeof a === "string" ? a : `${a?.title ?? ""} ${a?.organizer ?? ""} ${a?.year ?? ""}`),
     ...safeArr((resume as any)?.awards),
     ...safeArr(resume?.languages),
   ].join(" ")

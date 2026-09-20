@@ -660,8 +660,29 @@ export function normalizeResumeData(r: any): ResumeData {
   const p = r?.personalInfo || {}
   const legacyCerts: string[] = toArray<any>(r?.certifications).map((c) => typeof c === "string" ? c : String(c?.name || c?.title || "")).filter(Boolean)
   const legacyAch: string[] = toArray<any>(r?.achievements).map((a) => typeof a === "string" ? a : String(a?.name || a?.title || a?.description || "")).filter(Boolean)
-  const awardsArr: string[] = toArray<any>(r?.awards).map((a) => typeof a === "string" ? a : String((a as any)?.name || (a as any)?.title || (a as any)?.description || "")).filter(Boolean)
-  const awards = awardsArr.length > 0 ? awardsArr : [...legacyCerts, ...legacyAch]
+  const toAward = (a: any) => {
+    if (typeof a === "string") {
+      return { id: `aw_${Math.random().toString(36).slice(2, 8)}`, title: a.trim(), organizer: "", year: "" }
+    }
+    return {
+      id: a?.id || `aw_${Math.random().toString(36).slice(2, 8)}`,
+      title: String(a?.title || a?.name || "").trim(),
+      organizer: String(a?.organizer || a?.issuer || "").trim(),
+      year: String(a?.year || "").trim(),
+    }
+  }
+  const rawAwards = toArray<any>(r?.awards)
+  let awards: Array<{ id: string; title: string; organizer: string; year: string }>
+  if (rawAwards.some((a) => typeof a === "object" && (a?.title || a?.name))) {
+    awards = rawAwards.map(toAward).filter((a) => a.title)
+  } else {
+    // Migrasi format lama (string gabungan sertifikasi+pencapaian): yang sama
+    // persis dengan daftar sertifikasi dikembalikan ke certifications.
+    const certSet = new Set(legacyCerts.map((c) => c.trim().toLowerCase()))
+    const strings = rawAwards.map((a) => typeof a === "string" ? a : String(a?.name || a?.title || "")).map((s) => s.trim()).filter(Boolean)
+    const source = strings.length > 0 ? strings : legacyAch
+    awards = source.filter((s) => !certSet.has(s.trim().toLowerCase())).map((s) => toAward(s))
+  }
   const legacySkills = toArray(r?.skills).map((s: any) => {
     if (typeof s === "string") {
       return {
@@ -1260,7 +1281,7 @@ function computeDeterministicAts(resume: ResumeData, jobPosting: JobPosting): Pa
     ...resume.projects.map((p) => `${p.name} ${p.description} ${p.technologies.join(" ")}`),
     ...resume.certifications,
     ...resume.achievements,
-    ...(resume.awards ?? []),
+    ...(resume.awards ?? []).map((a: any) => typeof a === "string" ? a : `${a?.title ?? ""} ${a?.organizer ?? ""} ${a?.year ?? ""}`),
   ].join(" ").toLowerCase()
 
   const extractKeywords = (text: string): Set<string> => {
@@ -1446,8 +1467,27 @@ export function preserveOriginalFacts(original: ResumeData, optimized: ResumeDat
   ]
 
   // Awards & bahasa: hanya yang sudah ada di aslinya (tidak boleh nambah).
-  const origAwards = new Set([...original.awards, ...original.certifications, ...original.achievements].map((x) => x.trim().toLowerCase()))
-  const awards = optimized.awards.filter((a) => origAwards.has(a.trim().toLowerCase()))
+  // Award dikenali dari id-nya; fakta (title/organizer/year) dikunci dari aslinya.
+  const normAward = (a: any) => {
+    if (typeof a === "string") return { id: a, title: a.trim(), organizer: "", year: "" }
+    return {
+      id: String(a?.id ?? ""),
+      title: String(a?.title ?? a?.name ?? "").trim(),
+      organizer: String(a?.organizer ?? "").trim(),
+      year: String(a?.year ?? "").trim(),
+    }
+  }
+  const origAwardById = new Map(original.awards.map((a) => [a.id, a]))
+  const keptIds = new Set(
+    (optimized.awards ?? []).map(normAward).filter((a) => a.title && origAwardById.has(a.id)).map((a) => a.id)
+  )
+  // Urutan hasil LLM dipertahankan, tapi isi tiap item dikunci dari aslinya.
+  const fullAwards = keptIds.size === 0
+    ? original.awards
+    : (optimized.awards ?? []).map(normAward).filter((a) => keptIds.has(a.id)).map((a) => origAwardById.get(a.id)!)
+  const origCerts = new Set(original.certifications.map((x) => x.trim().toLowerCase()))
+  const certifications = (optimized.certifications ?? []).filter((c) => origCerts.has(String(c).trim().toLowerCase()))
+  const fullCerts = certifications.length > 0 ? certifications : original.certifications
   const origLang = new Set(original.languages.map((x) => x.trim().toLowerCase()))
   const languages = optimized.languages.filter((l) => origLang.has(l.trim().toLowerCase()))
 
@@ -1461,9 +1501,9 @@ export function preserveOriginalFacts(original: ResumeData, optimized: ResumeDat
     skills: skills.length > 0 ? skills : original.skills,
     skillGroups: skillGroups.length > 0 ? skillGroups : original.skillGroups,
     projects,
-    certifications: original.certifications,
+    certifications: fullCerts,
     achievements: original.achievements,
-    awards: awards.length > 0 ? awards : original.awards,
+    awards: fullAwards,
     languages: languages.length > 0 ? languages : original.languages,
   }
 }
@@ -1524,7 +1564,8 @@ Kembalikan JSON dengan struktur persis seperti ini:
   "research": [{ "id": "rs_1", "title": "Research Title", "status": "Under Review", "organization": "Lab Name, University", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "2023-12", "current": false, "description": "Contribution one\nContribution two with measured result" }, { "id": "rs_2", "title": "Second Research", "status": "Awaiting Publication", "organization": "Lab Name", "location": "", "startDate": "2024-01", "endDate": "", "current": true, "description": "Ongoing contribution" }],
   "skillGroups": [{ "id": "sg_1", "title": "Programming Languages", "items": ["JavaScript", "TypeScript", "Python", "SQL"] }, { "id": "sg_2", "title": "Frontend", "items": ["React.js", "Next.js", "Tailwind CSS"] }, { "id": "sg_3", "title": "Backend & APIs", "items": ["Node.js", "RESTful API Development", "Microservices Architecture"] }, { "id": "sg_4", "title": "Databases", "items": ["PostgreSQL", "Redis"] }],
   "projects": [{ "id": "proj_1", "name": "Project Name", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-name", "technologies": ["Tech1", "Tech2"] }, { "id": "proj_2", "name": "Project Two", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-two", "technologies": ["Tech3"] }],
-  "awards": ["AWS Certified Cloud Practitioner", "Best Graduate 2020", "Exceeded quarterly team target by 15% in 2023"],
+  "awards": [{ "id": "aw_1", "title": "2nd Place Hackathon 2025", "organizer": "Komdigi, Microsoft", "year": "2025" }, { "id": "aw_2", "title": "Best Graduate 2020", "organizer": "University", "year": "2020" }],
+  "certifications": ["AWS Certified Cloud Practitioner", "Google Project Management"],
   "languages": ["Indonesian (native)", "English (professional working proficiency)"]
 }
 ISI SEMUA field dengan data dummy yang REALISTIS dan SPESIFIK untuk posisi ini, dalam bahasa Inggris.
@@ -1545,7 +1586,7 @@ Benefits: ${toArray<string>(jobPosting.benefits).join(", ")}
 Education Requirements: ${toArray<string>(jobPosting.educationRequirements).join(", ")}
 
 Buat data resume yang menunjukkan kandidat ideal untuk posisi ini dengan pengalaman, pendidikan, dan skill yang relevan.
-Semua data boleh fiktif tapi harus realistis dan spesifik. ISI SEMUA FIELD, jangan ada yang kosong kecuali foto: 3 pengalaman kerja (deskripsi bullet, tiap baris = 1 pencapaian terukur), 2 pengalaman organisasi, 2 pendidikan (1 universitas lengkap dengan thesis multi-bullet, 1 SMA level school), 2 riset mandiri (judul + deskripsi bullet ber-angka), 4-5 skillGroups berkategori spesifik (cth. Programming Languages, Frontend, Backend & APIs, Databases — tiap grup 3-7 items), 3 proyek (deskripsi bullet + url github dummy + technologies terisi), 3-4 awards, dan 2-3 bahasa. Kosongkan hanya photo (wajah milik user, tidak boleh difabrikasi). Buat SELENGKAP mungkin agar user melihat versi paling penuh.
+Semua data boleh fiktif tapi harus realistis dan spesifik. ISI SEMUA FIELD, jangan ada yang kosong kecuali foto: 3 pengalaman kerja (deskripsi bullet, tiap baris = 1 pencapaian terukur), 2 pengalaman organisasi, 2 pendidikan (1 universitas lengkap dengan thesis multi-bullet, 1 SMA level school), 2 riset mandiri (judul + deskripsi bullet ber-angka), 4-5 skillGroups berkategori spesifik (cth. Programming Languages, Frontend, Backend & APIs, Databases — tiap grup 3-7 items), 3 proyek (deskripsi bullet + url github dummy + technologies terisi), 3-4 awards (tiap award: title, organizer, year), 2-3 certifications, dan 2-3 bahasa. Kosongkan hanya photo (wajah milik user, tidak boleh difabrikasi). Buat SELENGKAP mungkin agar user melihat versi paling penuh.
 GAYA BAHASA WAJIB KUANTITATIF DAN MEMBUKTIKAN: setiap bullet pengalaman, organisasi, proyek, dan ringkasan harus memuat angka konkret (jumlah, persen, waktu, skala) yang membuktikan dampak, cth. "Cut page load time by 45%", "Mentored 3 juniors", "serving 50k daily events". DILARANG kalimat generik tanpa angka seperti "responsible for", "helped with", "worked on".`
 
   const parsed = await extractJsonFromLLM<Partial<ResumeData>>(prompt, systemPrompt, config)

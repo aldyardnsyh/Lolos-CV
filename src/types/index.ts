@@ -80,6 +80,13 @@ export interface ResumeProject {
   technologies: string[]
 }
 
+export interface ResumeAward {
+  id: string
+  title: string
+  organizer: string
+  year: string
+}
+
 export interface ResumeData {
   personalInfo: ResumePersonalInfo
   summary: string
@@ -92,7 +99,7 @@ export interface ResumeData {
   projects: ResumeProject[]
   certifications: string[]
   achievements: string[]
-  awards: string[]
+  awards: ResumeAward[]
   languages: string[]
 }
 

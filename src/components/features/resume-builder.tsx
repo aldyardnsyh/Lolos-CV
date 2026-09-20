@@ -128,13 +128,19 @@ function getDisplaySkillGroups(resume: ResumeData): Array<{ id: string; title: s
   return []
 }
 
-function getDisplayAwards(resume: ResumeData): string[] {
-  const a = (resume.awards ?? []).map((x) => String(x ?? "").trim()).filter(Boolean)
+function getDisplayAwards(resume: ResumeData): Array<{ id: string; title: string; organizer: string; year: string }> {
+  const norm = (x: any) => {
+    if (typeof x === "string") return { id: `aw_${x.slice(0, 8)}`, title: x.trim(), organizer: "", year: "" }
+    return {
+      id: String(x?.id ?? `aw_${Math.random().toString(36).slice(2, 8)}`),
+      title: String(x?.title ?? x?.name ?? "").trim(),
+      organizer: String(x?.organizer ?? "").trim(),
+      year: String(x?.year ?? "").trim(),
+    }
+  }
+  const a = (resume.awards ?? []).map(norm).filter((x) => x.title)
   if (a.length > 0) return a
-  const legacy = [
-    ...((resume as any).certifications ?? []),
-    ...((resume as any).achievements ?? []),
-  ].map((x) => String(x ?? "").trim()).filter(Boolean)
+  const legacy = ((resume as any).achievements ?? []).map(norm).filter((x: { title: string }) => x.title)
   return legacy
 }
 
@@ -291,7 +297,13 @@ export function ResumeBuilder() {
   const [preview, setPreview] = useState(false)
   const [aiLoading, setAiLoading] = useState<string | null>(null)
   const [newLang, setNewLang] = useState("")
-  const [newAward, setNewAward] = useState("")
+  const [newCert, setNewCert] = useState("")
+  // Draft teks mentah agar koma/parse tidak memangsa ketikan per keystroke.
+  // Parsing (split koma/newline) hanya saat blur atau Enter.
+  const [techDrafts, setTechDrafts] = useState<Record<string, string>>({})
+  const [skillDrafts, setSkillDrafts] = useState<Record<string, string>>({})
+  const parseList = (raw: string): string[] =>
+    String(raw ?? "").split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)
   const [showPdfMenu, setShowPdfMenu] = useState(false)
   const [toast, setToast] = useState<{ show: boolean; message: string; type: "success" | "error" }>({ show: false, message: "", type: "success" })
   const [showImportTools, setShowImportTools] = useState(false)
@@ -675,14 +687,35 @@ export function ResumeBuilder() {
     setResume((prev) => ({ ...prev, skillGroups: (prev.skillGroups ?? []).filter((g) => g.id !== id) }))
   }
 
-  const addAward = () => {
-    if (!newAward.trim()) return
-    setResume((prev) => ({ ...prev, awards: [...(prev.awards ?? []), newAward.trim()] }))
-    setNewAward("")
+  const addAwardItem = () => {
+    setResume((prev) => ({
+      ...prev,
+      awards: [...(prev.awards ?? []), { id: newId(), title: "", organizer: "", year: "" }],
+    }))
   }
 
-  const removeAward = (index: number) => {
-    setResume((prev) => ({ ...prev, awards: (prev.awards ?? []).filter((_, i) => i !== index) }))
+  const updateAwardItem = (id: string, field: string, value: string) => {
+    setResume((prev) => ({
+      ...prev,
+      awards: (prev.awards ?? []).map((a) => {
+        const item = typeof a === "string" ? { id: newId(), title: a, organizer: "", year: "" } : a
+        return item.id === id ? { ...item, [field]: value } : item
+      }),
+    }))
+  }
+
+  const removeAwardItem = (id: string) => {
+    setResume((prev) => ({ ...prev, awards: (prev.awards ?? []).filter((a) => (typeof a === "string" ? a : a.id) !== id) }))
+  }
+
+  const addCertification = () => {
+    if (!newCert.trim()) return
+    setResume((prev) => ({ ...prev, certifications: [...(prev.certifications ?? []), newCert.trim()] }))
+    setNewCert("")
+  }
+
+  const removeCertification = (index: number) => {
+    setResume((prev) => ({ ...prev, certifications: (prev.certifications ?? []).filter((_, i) => i !== index) }))
   }
 
   const addLanguage = () => {
@@ -1307,14 +1340,25 @@ export function ResumeBuilder() {
                             </div>
                           </div>
                         )}
-                        {isSectionVisible("awards") && getDisplayAwards(resume).length > 0 && (
+                        {(getDisplayAwards(resume).length > 0 || (resume.certifications ?? []).length > 0) && isSectionVisible("awards") && (
                           <div style={{ order: orderOf("awards") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("awards", resumeLang)}</h3>
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {getDisplayAwards(resume).map((a, i) => (
-                                <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{a}</li>
-                              ))}
-                            </ul>
+                            {getDisplayAwards(resume).length > 0 && (
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {getDisplayAwards(resume).map((a) => (
+                                  <li key={a.id} className="text-[10px] text-gray-700 leading-relaxed">
+                                    <span className="font-semibold">{a.title}</span>
+                                    {a.organizer && <span> | {a.organizer}</span>}
+                                    {a.year && <span className="float-right italic text-gray-500 ml-2">{a.year}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {(resume.certifications ?? []).length > 0 && (
+                              <p className="text-[10px] text-gray-700 leading-relaxed mt-1">
+                                {(resume.certifications ?? []).join(" | ")}
+                              </p>
+                            )}
                           </div>
                         )}
                         
@@ -1533,14 +1577,25 @@ export function ResumeBuilder() {
                             </div>
                           </div>
                         )}
-                        {isSectionVisible("awards") && getDisplayAwards(resume).length > 0 && (
+                        {(getDisplayAwards(resume).length > 0 || (resume.certifications ?? []).length > 0) && isSectionVisible("awards") && (
                           <div style={{ order: orderOf("awards") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("awards", resumeLang)}</h3>
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {getDisplayAwards(resume).map((a, i) => (
-                                <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{a}</li>
-                              ))}
-                            </ul>
+                            {getDisplayAwards(resume).length > 0 && (
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {getDisplayAwards(resume).map((a) => (
+                                  <li key={a.id} className="text-[10px] text-gray-700 leading-relaxed">
+                                    <span className="font-semibold">{a.title}</span>
+                                    {a.organizer && <span> | {a.organizer}</span>}
+                                    {a.year && <span className="float-right italic text-gray-500 ml-2">{a.year}</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {(resume.certifications ?? []).length > 0 && (
+                              <p className="text-[10px] text-gray-700 leading-relaxed mt-1">
+                                {(resume.certifications ?? []).join(" | ")}
+                              </p>
+                            )}
                           </div>
                         )}
                         
@@ -1734,14 +1789,25 @@ export function ResumeBuilder() {
                             </div>
                           </div>
                         )}
-                        {isSectionVisible("awards") && getDisplayAwards(resume).length > 0 && (
+                        {(getDisplayAwards(resume).length > 0 || (resume.certifications ?? []).length > 0) && isSectionVisible("awards") && (
                           <div style={{ order: orderOf("awards") }}>
                             <h3 className="text-sm font-bold mb-2 inline-block px-3 py-1 rounded-lg text-white" style={{ backgroundColor: pal.main }}>{getSectionLabel("awards", resumeLang)}</h3>
-                            <ul className="list-disc list-inside mt-3 space-y-1">
-                              {getDisplayAwards(resume).map((a, i) => (
-                                <li key={i} className="text-[11px] leading-relaxed">{a}</li>
-                              ))}
-                            </ul>
+                            {getDisplayAwards(resume).length > 0 && (
+                              <ul className="list-disc list-inside mt-3 space-y-1">
+                                {getDisplayAwards(resume).map((a) => (
+                                  <li key={a.id} className="text-[11px] leading-relaxed">
+                                    <span className="font-semibold">{a.title}</span>
+                                    {a.organizer && <span> | {a.organizer}</span>}
+                                    {a.year && <span className="italic opacity-70"> ({a.year})</span>}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {(resume.certifications ?? []).length > 0 && (
+                              <p className="text-[11px] mt-2">
+                                {(resume.certifications ?? []).join(" | ")}
+                              </p>
+                            )}
                           </div>
                         )}
                         {isSectionVisible("languages") && resume.languages.length > 0 && (
@@ -1860,17 +1926,27 @@ export function ResumeBuilder() {
                             </div>
                           </div>
                         )}
-                        {isSectionVisible("awards") && getDisplayAwards(resume).length > 0 && (
+                        {(getDisplayAwards(resume).length > 0 || (resume.certifications ?? []).length > 0) && isSectionVisible("awards") && (
                           <div style={{ order: orderOf("awards") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: pal.main }}>{getSectionLabel("awards", resumeLang)}</h3>
-                            <div className="flex flex-col gap-y-1">
-                              {getDisplayAwards(resume).map((a, i) => (
-                                <span key={i} className="text-[11px] flex items-center gap-1">
-                                  <span className="w-1 h-1 rounded-full inline-block" style={{ backgroundColor: pal.main }} />
-                                  {a}
-                                </span>
-                              ))}
-                            </div>
+                            {getDisplayAwards(resume).length > 0 && (
+                              <div className="flex flex-col gap-y-1">
+                                {getDisplayAwards(resume).map((a) => (
+                                  <div key={a.id} className="flex justify-between items-start gap-2">
+                                    <span className="text-[11px] flex items-start gap-1 min-w-0">
+                                      <span className="w-1 h-1 rounded-full inline-block shrink-0 mt-1.5" style={{ backgroundColor: pal.main }} />
+                                      <span><span className="font-semibold">{a.title}</span>{a.organizer && <span className="text-muted-foreground"> | {a.organizer}</span>}</span>
+                                    </span>
+                                    {a.year && <span className="text-[10px] text-muted-foreground shrink-0">{a.year}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {(resume.certifications ?? []).length > 0 && (
+                              <p className="text-[11px] text-muted-foreground mt-1.5">
+                                {(resume.certifications ?? []).join(" | ")}
+                              </p>
+                            )}
                           </div>
                         )}
                         {isSectionVisible("organizations") && (resume.organizations ?? []).length > 0 && (
@@ -2322,8 +2398,17 @@ export function ResumeBuilder() {
                                   <div className="space-y-2">
                                     <Label>{resumeLang === "en" ? "Technologies (comma separated)" : "Teknologi (pisah koma)"}</Label>
                                     <Input
-                                      value={(proj.technologies || []).join(", ")}
-                                      onChange={(e) => updateProject(proj.id, "technologies", e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))}
+                                      value={techDrafts[proj.id] ?? (proj.technologies || []).join(", ")}
+                                      onChange={(e) => setTechDrafts((d) => ({ ...d, [proj.id]: e.target.value }))}
+                                      onBlur={(e) => {
+                                        updateProject(proj.id, "technologies", parseList(e.target.value))
+                                        setTechDrafts((d) => {
+                                          const next = { ...d }
+                                          delete next[proj.id]
+                                          return next
+                                        })
+                                      }}
+                                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur() }}
                                       placeholder="React, Node.js, Tailwind"
                                     />
                                   </div>
@@ -2464,8 +2549,16 @@ export function ResumeBuilder() {
                                 <textarea
                                   className="w-full min-h-[70px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                   placeholder="JavaScript, TypeScript, Python"
-                                  value={(g.items ?? []).join(", ")}
-                                  onChange={(e) => updateSkillGroup(g.id, "items", e.target.value)}
+                                  value={skillDrafts[g.id] ?? (g.items ?? []).join(", ")}
+                                  onChange={(e) => setSkillDrafts((d) => ({ ...d, [g.id]: e.target.value }))}
+                                  onBlur={(e) => {
+                                    updateSkillGroup(g.id, "items", parseList(e.target.value))
+                                    setSkillDrafts((d) => {
+                                      const next = { ...d }
+                                      delete next[g.id]
+                                      return next
+                                    })
+                                  }}
                                 />
                                 {(g.items ?? []).length > 0 && (
                                   <div className="flex flex-wrap gap-1.5 pt-1">
@@ -2491,22 +2584,68 @@ export function ResumeBuilder() {
                   )
                   if (sid === "awards") return (
                     <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Award} color="bg-amber-500" defaultOpen={false}>
-                      <div className="space-y-3">
-                        {(resume.awards ?? []).length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {(resume.awards ?? []).map((a, i) => (
-                              <Badge key={i} variant="secondary" className="gap-1 px-3 py-1.5 cursor-pointer hover:bg-destructive/20 hover:text-destructive transition-colors group" onClick={() => removeAward(i)}>
-                                {a}
-                                <span className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">&times;</span>
-                              </Badge>
-                            ))}
+                      <div className="space-y-5">
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {resumeLang === "en" ? "Awards (bullets with year)" : "Penghargaan (bullet + tahun)"}
+                          </p>
+                          {(resume.awards ?? []).length === 0 && (
+                            <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No awards yet." : "Belum ada penghargaan."}</p>
+                          )}
+                          {(resume.awards ?? []).map((raw) => {
+                            const a = typeof raw === "string" ? { id: raw, title: raw, organizer: "", year: "" } : raw
+                            return (
+                              <Card key={a.id} className="border-border/50">
+                                <CardContent className="pt-4">
+                                  <div className="grid grid-cols-1 gap-3">
+                                    <div className="space-y-2">
+                                      <Label>{resumeLang === "en" ? "Placement + Name" : "Juara + Nama"}</Label>
+                                      <Input value={a.title} onChange={(e) => updateAwardItem(a.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. 2nd Place Hackathon 2025" : "cth. Juara 2 Hackathon 2025"} />
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div className="space-y-2">
+                                        <Label>{resumeLang === "en" ? "Organizer" : "Penyelenggara"}</Label>
+                                        <Input value={a.organizer} onChange={(e) => updateAwardItem(a.id, "organizer", e.target.value)} placeholder="Komdigi, Microsoft" />
+                                      </div>
+                                      <div className="space-y-2">
+                                        <Label>{resumeLang === "en" ? "Year" : "Tahun"}</Label>
+                                        <Input value={a.year} onChange={(e) => updateAwardItem(a.id, "year", e.target.value)} placeholder="2025" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-end mt-2">
+                                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeAwardItem(a.id)}>
+                                      <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
+                                    </Button>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            )
+                          })}
+                          <Button variant="outline" className="w-full gap-2" onClick={addAwardItem}>
+                            <Plus className="w-4 h-4" />{resumeLang === "en" ? "Add Award" : "Tambah Penghargaan"}
+                          </Button>
+                        </div>
+                        <div className="space-y-3 border-t border-border/50 pt-4">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {resumeLang === "en" ? "Certifications (one line)" : "Sertifikasi (satu baris)"}
+                          </p>
+                          {(resume.certifications ?? []).length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {(resume.certifications ?? []).map((cert, i) => (
+                                <Badge key={i} variant="secondary" className="gap-1 px-3 py-1.5 cursor-pointer hover:bg-destructive/20 hover:text-destructive transition-colors group" onClick={() => removeCertification(i)}>
+                                  {cert}
+                                  <span className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">&times;</span>
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No certifications yet." : "Belum ada sertifikasi."}</p>
+                          )}
+                          <div className="flex gap-2">
+                            <Input placeholder={resumeLang === "en" ? "Add certification..." : "Tambah sertifikasi..."} className="flex-1" value={newCert} onChange={(e) => setNewCert(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCertification()} />
+                            <Button variant="outline" size="sm" onClick={addCertification}>{resumeLang === "en" ? "Add" : "Tambah"}</Button>
                           </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No awards or certifications yet." : "Belum ada penghargaan atau sertifikasi."}</p>
-                        )}
-                        <div className="flex gap-2">
-                          <Input placeholder={resumeLang === "en" ? "Add award / certification..." : "Tambah penghargaan / sertifikasi..."} className="flex-1" value={newAward} onChange={(e) => setNewAward(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addAward()} />
-                          <Button variant="outline" size="sm" onClick={addAward}>{resumeLang === "en" ? "Add" : "Tambah"}</Button>
                         </div>
                       </div>
                     </SectionCard>
