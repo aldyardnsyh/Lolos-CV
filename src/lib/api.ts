@@ -732,13 +732,13 @@ export function normalizeResumeData(r: any): ResumeData {
       if ((e.researchTitle ?? "").trim() || (e.researchDescription ?? "").trim()) {
         research.push({
           id: `rs_${Math.random().toString(36).slice(2, 8)}`,
-          title: e.researchTitle.trim() || "Research",
+          title: (e.researchTitle ?? "").trim() || "Research",
           organization: e.institution,
           location: "",
           startDate: e.startDate,
           endDate: e.endDate,
           current: false,
-          description: e.researchDescription,
+          description: e.researchDescription ?? "",
         })
         e.researchTitle = ""
         e.researchDescription = ""
