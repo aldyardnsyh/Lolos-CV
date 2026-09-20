@@ -107,12 +107,6 @@ html {
   color: hsl(var(--foreground));
 }
 
-/* Bar progres global: meluncur kiri-kanan selama ada proses berjalan. */
-@keyframes busy-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(320%); }
-}
-
 /* Skala font kertas CV tanpa zoom: Tipografi Kecil/Sedang/Besar hanya
    mengubah ukuran font di dalam .cv-paper. Layout/kertas tetap 210mm. */
 .cv-paper {

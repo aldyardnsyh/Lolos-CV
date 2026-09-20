@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronUp, User, Users, Briefcase, GraduationCap, Wrench,
   Globe, Award, Languages, CheckCircle2, AlertCircle, Upload, Wand2,
   EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X,
+  LayoutTemplate, Type, ALargeSmall,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +19,6 @@ import { cn, formatResumeDate, isSafePhotoSrc } from "@/lib/utils"
 import { generateResumeContent, generateSummary, generateSampleResume, translateResume, getApiConfig, safeLocalGet, safeLocalSet, normalizeResumeData } from "@/lib/api"
 import { buildMockSampleResume } from "@/lib/sample-mock"
 import { useSampleGenerating } from "@/lib/sample-generation"
-import { pushBusy } from "@/lib/busy"
 import { CVUploader } from "@/components/features/cv-uploader"
 import type { ResumeData, ResumeTemplate, ResumeExperience, ResumeEducation, ResumeSkill, JobPosting } from "@/types"
 
@@ -297,26 +297,10 @@ export function ResumeBuilder() {
 
   const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
 
-  // Edit & preview = dua layer terpisah: masing-masing ingat posisi
-  // scroll-nya sendiri, jadi pindah mode tidak melemparmu ke posisi asing.
-  const editScrollRef = useRef(0)
-  const previewScrollRef = useRef(0)
+  // Edit & preview menimpa di tempat yang sama: posisi scroll tidak
+  // disentuh sama sekali agar tidak ada lompatan paksa.
   const togglePreview = () => {
-    const goingToPreview = !preview
-    if (goingToPreview) {
-      editScrollRef.current = window.scrollY
-    } else {
-      previewScrollRef.current = window.scrollY
-    }
-    setPreview(goingToPreview)
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({
-          top: goingToPreview ? previewScrollRef.current : editScrollRef.current,
-          behavior: "auto",
-        })
-      })
-    })
+    setPreview((p) => !p)
   }
 
   // Generate bersifat destruktif (replace seluruh isi) → minta konfirmasi
@@ -491,7 +475,6 @@ export function ResumeBuilder() {
   const handleGenerateSample = async () => {
     if (generatingSample) return
     setGeneratingSample(true)
-    const doneBusy = pushBusy(resumeLang === "en" ? "Generating sample CV..." : "Membuat contoh CV...")
     try {
       const stored = safeLocalGet("job_analysis")
       if (!stored) {
@@ -517,7 +500,6 @@ export function ResumeBuilder() {
     } catch (err: any) {
       showToast(`Gagal: ${err.message}`, "error")
     } finally {
-      doneBusy()
       setGeneratingSample(false)
     }
   }
@@ -542,7 +524,6 @@ export function ResumeBuilder() {
       return
     }
     setTranslating(true)
-    const doneBusy = pushBusy(resumeLang === "en" ? "Translating resume..." : "Menerjemahkan resume...")
     try {
       const translated = await translateResume(resume, next)
       setResume(translated)
@@ -552,7 +533,6 @@ export function ResumeBuilder() {
     } catch (err: any) {
       showToast(`Gagal menerjemahkan: ${err.message}`, "error")
     } finally {
-      doneBusy()
       setTranslating(false)
     }
   }
@@ -692,7 +672,6 @@ export function ResumeBuilder() {
       return
     }
     setAiLoading(section)
-    const doneBusy = pushBusy(resumeLang === "en" ? "AI is writing..." : "AI sedang menulis...")
     try {
       if (section === "summary") {
         const targetRole = resume.experiences[0]?.position || "Posisi target"
@@ -717,14 +696,12 @@ export function ResumeBuilder() {
     } catch (err: any) {
       showToast(`Gagal: ${err.message}`, "error")
     } finally {
-      doneBusy()
       setAiLoading(null)
     }
   }, [resume])
 
   const handleDownloadPdf = async () => {
     setExportingPdf(true)
-    const doneBusy = pushBusy(resumeLang === "en" ? "Preparing PDF..." : "Menyiapkan PDF...")
 
     try {
       const previewEl = document.getElementById("resume-preview-content")
@@ -769,11 +746,9 @@ export function ResumeBuilder() {
       // Cleanup after print dialog closes
       setTimeout(() => {
         document.body.removeChild(clone)
-        doneBusy()
         setExportingPdf(false)
       }, 500)
     } catch (err) {
-      doneBusy()
       showToast("Gagal export: " + (err instanceof Error ? err.message : "unknown error"), "error")
       setExportingPdf(false)
     }
@@ -785,12 +760,21 @@ export function ResumeBuilder() {
   return (
     <section id="builder" className="py-24 relative">
       {toast.show && (
-        <div className={cn(
-          "fixed top-4 right-4 z-[100] flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl border transition-all duration-300",
-          toast.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-red-50 border-red-200 text-red-800"
-        )}>
-          {toast.type === "success" ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
-          <span className="text-sm font-medium">{toast.message}</span>
+        <div className="fixed top-20 right-4 z-[100] flex items-start gap-3 pl-3 pr-5 py-3 rounded-2xl shadow-2xl border border-border bg-card text-card-foreground max-w-sm animate-in fade-in slide-in-from-right-4 duration-300">
+          <div className={cn(
+            "p-2 rounded-xl text-white shrink-0 shadow",
+            toast.type === "success" ? "bg-emerald-500" : "bg-red-500"
+          )}>
+            {toast.type === "success" ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              {toast.type === "success"
+                ? (resumeLang === "en" ? "Success" : "Berhasil")
+                : (resumeLang === "en" ? "Failed" : "Gagal")}
+            </p>
+            <p className="text-sm font-medium leading-snug mt-0.5">{toast.message}</p>
+          </div>
         </div>
       )}
 
@@ -918,12 +902,8 @@ export function ResumeBuilder() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <h3 className="text-lg font-bold px-1">{preview ? "Preview CV" : "Edit CV"}</h3>
-            <div className="sticky top-16 z-30 -mx-1 px-1 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 rounded-xl">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pl-1">
-                {resumeLang === "en" ? "Customize" : "Kustomisasi"}
-              </span>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
+            <div className="sticky top-16 z-30 -mx-1 px-2 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 rounded-xl border border-border/50 shadow-sm">
+            <div className="flex items-center gap-2 flex-wrap">
                 <Button variant="outline" size="sm" onClick={togglePreview} className="gap-2">
                   {preview ? <Edit3 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   {preview ? "Edit" : "Preview"}
@@ -969,42 +949,52 @@ export function ResumeBuilder() {
                     EN
                   </button>
                 </div>
+                <div className="w-px h-6 bg-border hidden sm:block" aria-hidden />
+              <div className="relative flex items-center">
+                <LayoutTemplate className="w-3.5 h-3.5 absolute left-2 text-muted-foreground pointer-events-none" />
+                <select
+                  value={selectedTemplate}
+                  onChange={(e) => setSelectedTemplate(e.target.value as ResumeTemplate)}
+                  title={resumeLang === "en" ? "Template" : "Template"}
+                  aria-label="Template"
+                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-1.5 bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer max-w-[150px] appearance-none"
+                >
+                  {(Object.entries(templateStyles) as [ResumeTemplate, TemplateStyle][]).map(([key, t]) => (
+                    <option key={key} value={key}>{t.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2 text-muted-foreground pointer-events-none" />
               </div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap mt-2">
-              <select
-                value={selectedTemplate}
-                onChange={(e) => setSelectedTemplate(e.target.value as ResumeTemplate)}
-                title={resumeLang === "en" ? "Template" : "Template"}
-                aria-label="Template"
-                className="text-xs font-medium border border-border rounded-lg px-2 py-1.5 bg-background hover:border-primary/50 transition-colors cursor-pointer max-w-[150px]"
-              >
-                {(Object.entries(templateStyles) as [ResumeTemplate, TemplateStyle][]).map(([key, t]) => (
-                  <option key={key} value={key}>{t.name}</option>
-                ))}
-              </select>
-              <select
-                value={cvFont}
-                onChange={(e) => setCvFont(e.target.value as CvFont)}
-                title={resumeLang === "en" ? "Font" : "Font"}
-                aria-label="Font"
-                className="text-xs font-medium border border-border rounded-lg px-2 py-1.5 bg-background hover:border-primary/50 transition-colors cursor-pointer max-w-[130px]"
-              >
-                {(Object.keys(FONT_STACKS) as CvFont[]).map((f) => (
-                  <option key={f} value={f}>{resumeLang === "en" ? FONT_LABELS_EN[f] : FONT_LABELS_ID[f]}</option>
-                ))}
-              </select>
-              <select
-                value={cvSize}
-                onChange={(e) => setCvSize(e.target.value as CvFontSize)}
-                title={resumeLang === "en" ? "Size" : "Ukuran"}
-                aria-label="Size"
-                className="text-xs font-medium border border-border rounded-lg px-2 py-1.5 bg-background hover:border-primary/50 transition-colors cursor-pointer"
-              >
-                {(Object.keys(FONT_SCALE) as CvFontSize[]).map((s) => (
-                  <option key={s} value={s}>{resumeLang === "en" ? SIZE_LABELS_EN[s] : SIZE_LABELS_ID[s]}</option>
-                ))}
-              </select>
+              <div className="relative flex items-center">
+                <Type className="w-3.5 h-3.5 absolute left-2 text-muted-foreground pointer-events-none" />
+                <select
+                  value={cvFont}
+                  onChange={(e) => setCvFont(e.target.value as CvFont)}
+                  title={resumeLang === "en" ? "Font" : "Font"}
+                  aria-label="Font"
+                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-1.5 bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer max-w-[130px] appearance-none"
+                >
+                  {(Object.keys(FONT_STACKS) as CvFont[]).map((f) => (
+                    <option key={f} value={f}>{resumeLang === "en" ? FONT_LABELS_EN[f] : FONT_LABELS_ID[f]}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2 text-muted-foreground pointer-events-none" />
+              </div>
+              <div className="relative flex items-center">
+                <ALargeSmall className="w-3.5 h-3.5 absolute left-2 text-muted-foreground pointer-events-none" />
+                <select
+                  value={cvSize}
+                  onChange={(e) => setCvSize(e.target.value as CvFontSize)}
+                  title={resumeLang === "en" ? "Size" : "Ukuran"}
+                  aria-label="Size"
+                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-1.5 bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer appearance-none"
+                >
+                  {(Object.keys(FONT_SCALE) as CvFontSize[]).map((s) => (
+                    <option key={s} value={s}>{resumeLang === "en" ? SIZE_LABELS_EN[s] : SIZE_LABELS_ID[s]}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2 text-muted-foreground pointer-events-none" />
+              </div>
               {(selectedTemplate === "creative" || selectedTemplate === "modern") && (
                 <div className="flex items-center gap-1" title={resumeLang === "en" ? "Accent color" : "Warna aksen"}>
                   {ACCENT_PALETTES.map((p, i) => (

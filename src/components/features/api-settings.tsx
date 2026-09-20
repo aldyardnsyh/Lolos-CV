@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge"
 import { PROVIDERS, type ProviderConfig, type ProviderModel, type ReasoningEffort } from "@/types"
 import { detectProviderWithCandidates, getModelsForProvider, testConnection, getDefaultModel, getReasoningEffortsForModel, fetchAvailableModels, safeLocalGet, safeLocalSet, safeLocalRemove, type DetectionResult } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { pushBusy } from "@/lib/busy"
 
 const EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: "Low (Cepat)",
@@ -135,7 +134,6 @@ export function ApiSettings() {
     if (!custom && !apiKey.trim()) return
     if (custom && !customBaseUrl.trim()) return
     setLoadingModels(true); setModelsError(null)
-    const doneBusyModels = pushBusy("Memuat daftar model...")
     try {
       const models = await fetchAvailableModels({
         apiKey: apiKey.trim(),
@@ -151,7 +149,6 @@ export function ApiSettings() {
     } catch (e: any) {
       setModelsError(e?.message || "Gagal memuat daftar model dari API")
     } finally {
-      doneBusyModels()
       setLoadingModels(false)
     }
   }, [detectedProvider, apiKey, customBaseUrl, selectedModel, selectedEffort])
@@ -163,7 +160,6 @@ export function ApiSettings() {
     if (custom && !customBaseUrl.trim()) return
     if (custom && !selectedModel) return
     setTesting(true); setTestResult(null)
-    const doneBusyTest = pushBusy("Menguji koneksi...")
     const result = await testConnection({
       apiKey: apiKey.trim(),
       model: selectedModel || getDefaultModel(detectedProvider.id),
@@ -171,7 +167,7 @@ export function ApiSettings() {
       baseUrl: customBaseUrl || detectedProvider.baseUrl,
       reasoningEffort: selectedEffort,
     })
-    setTestResult(result); doneBusyTest(); setTesting(false)
+    setTestResult(result); setTesting(false)
   }
 
   const saveConfig = () => {

@@ -7,7 +7,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import { pushBusy } from "@/lib/busy"
 import { extractResumeFromCvText } from "@/lib/api"
 import type { ResumeData } from "@/types"
 
@@ -63,12 +62,11 @@ export function CVUploader({ onApply }: CVUploaderProps) {
 
     setExtracting(true)
     setProgress(0)
-    const doneBusyUpload = pushBusy("Mengekstrak teks PDF...")
     try {
       const text = await extractPdfText(f)
       if (!text.trim()) {
         setError("Tidak dapat mengekstrak teks dari PDF. Pastikan file bukan hasil scan/gambar.")
-        doneBusyUpload(); setExtracting(false)
+        setExtracting(false)
         return
       }
       const data = await extractResumeFromCvText(text)
@@ -76,7 +74,7 @@ export function CVUploader({ onApply }: CVUploaderProps) {
     } catch (err: any) {
       setError(err.message || "Gagal memproses file")
     } finally {
-      doneBusyUpload(); setExtracting(false)
+      setExtracting(false)
     }
   }
 

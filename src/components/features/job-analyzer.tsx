@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils"
 import { analyzeJobPosting, analyzeJobText, extractKeyPoints, generateSampleResume, getApiConfig, safeLocalSet } from "@/lib/api"
 import { buildMockSampleResume } from "@/lib/sample-mock"
 import { useSampleGenerating } from "@/lib/sample-generation"
-import { pushBusy } from "@/lib/busy"
 import type { JobPosting } from "@/types"
 
 const sourceColors: Record<string, string> = {
@@ -72,7 +71,6 @@ export function JobAnalyzer() {
     }
 
     setAnalyzing(true)
-    const doneBusyAnalyze = pushBusy("Menganalisis lowongan...")
     setError(null)
     setResult(null)
     setRawText("")
@@ -85,7 +83,7 @@ export function JobAnalyzer() {
       if (inputMode === "paste") {
         if (!pasteText.trim() || pasteText.trim().length < 10) {
           setError("Teks terlalu pendek. Minimal 10 karakter.")
-          doneBusyAnalyze(); setAnalyzing(false)
+          setAnalyzing(false)
           return
         }
         jobData = await analyzeJobText(pasteText.trim())
@@ -93,12 +91,12 @@ export function JobAnalyzer() {
       } else {
         if (!url.trim()) {
           setError("Masukkan URL lowongan kerja.")
-          doneBusyAnalyze(); setAnalyzing(false)
+          setAnalyzing(false)
           return
         }
         if (!isValidUrl(url.trim())) {
           setError("URL tidak valid. Masukkan URL lengkap (https://...)")
-          doneBusyAnalyze(); setAnalyzing(false)
+          setAnalyzing(false)
           return
         }
         const urlResult = await analyzeJobPosting(url.trim())
@@ -116,7 +114,7 @@ export function JobAnalyzer() {
     } catch (err: any) {
       setError(err.message || "Gagal menganalisis lowongan.")
     } finally {
-      doneBusyAnalyze(); setAnalyzing(false)
+      setAnalyzing(false)
     }
   }
 
@@ -136,7 +134,6 @@ Deskripsi: ${result.description}${reqText}${benText}`
   const handleBuildResume = async () => {
     if (!result || generatingFromJob) return
     setGeneratingFromJob(true)
-    const doneBusyBuild = pushBusy("Menyusun resume dari lowongan...")
     setCtaMessage(null)
     try {
       const hasApi = !!getApiConfig()
@@ -152,7 +149,6 @@ Deskripsi: ${result.description}${reqText}${benText}`
     } catch (err: any) {
       setCtaMessage({ type: "error", text: `Gagal: ${err?.message || "coba lagi"}` })
     } finally {
-      doneBusyBuild()
       setGeneratingFromJob(false)
     }
   }
