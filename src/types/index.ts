@@ -84,6 +84,7 @@ export interface ResumeAward {
   id: string
   title: string
   organizer: string
+  month: string
   year: string
 }
 

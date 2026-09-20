@@ -225,10 +225,10 @@ export function buildMockSampleResume(job: JobPosting | null): ResumeData {
       "Received appreciation award for consistent on-time delivery",
     ],
     awards: [
-      { id: "aw_1", title: "2nd Place Hackathon elevAIte Indonesia 2025", organizer: "Komdigi, Microsoft, elevAIte Hub UGM", year: "2025" },
-      { id: "aw_2", title: "Best Graduate, Faculty of Computer Science", organizer: "Universitas Indonesia", year: "2020" },
-      { id: "aw_3", title: "Exceeded quarterly team target by 15%", organizer: "PT Sample Maju Bersama", year: "2023" },
-      { id: "aw_4", title: "Speaker at React Indonesia Meetup #42", organizer: "React Indonesia Community", year: "2024" },
+      { id: "aw_1", title: "2nd Place Hackathon elevAIte Indonesia 2025", organizer: "Komdigi, Microsoft, elevAIte Hub UGM", month: "11", year: "2025" },
+      { id: "aw_2", title: "Best Graduate, Faculty of Computer Science", organizer: "Universitas Indonesia", month: "08", year: "2020" },
+      { id: "aw_3", title: "Exceeded quarterly team target by 15%", organizer: "PT Sample Maju Bersama", month: "12", year: "2023" },
+      { id: "aw_4", title: "Speaker at React Indonesia Meetup #42", organizer: "React Indonesia Community", month: "06", year: "2024" },
     ],
     languages: ["Indonesian (native)", "English (professional working proficiency)", "Malay (conversational)"],
   }

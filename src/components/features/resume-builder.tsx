@@ -135,6 +135,7 @@ function getDisplayAwards(resume: ResumeData): Array<{ id: string; title: string
       id: String(x?.id ?? `aw_${Math.random().toString(36).slice(2, 8)}`),
       title: String(x?.title ?? x?.name ?? "").trim(),
       organizer: String(x?.organizer ?? "").trim(),
+      month: String(x?.month ?? "").trim(),
       year: String(x?.year ?? "").trim(),
     }
   }
@@ -146,6 +147,16 @@ function getDisplayAwards(resume: ResumeData): Array<{ id: string; title: string
 
 function bulletLines(text: string | undefined | null): string[] {
   return String(text ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
+}
+
+const MONTH_SHORT_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const MONTH_SHORT_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+function awardDate(a: { month?: string; year?: string }, lang: "id" | "en"): string {
+  const mi = parseInt(String(a?.month ?? ""), 10)
+  const names = lang === "en" ? MONTH_SHORT_EN : MONTH_SHORT_ID
+  const m = mi >= 1 && mi <= 12 ? `${names[mi - 1]} ` : ""
+  return `${m}${(a?.year ?? "").trim()}`.trim()
 }
 
 function asHref(u: string | undefined | null): string {
@@ -690,7 +701,7 @@ export function ResumeBuilder() {
   const addAwardItem = () => {
     setResume((prev) => ({
       ...prev,
-      awards: [...(prev.awards ?? []), { id: newId(), title: "", organizer: "", year: "" }],
+      awards: [...(prev.awards ?? []), { id: newId(), title: "", organizer: "", month: "", year: "" }],
     }))
   }
 
@@ -698,7 +709,7 @@ export function ResumeBuilder() {
     setResume((prev) => ({
       ...prev,
       awards: (prev.awards ?? []).map((a) => {
-        const item = typeof a === "string" ? { id: newId(), title: a, organizer: "", year: "" } : a
+        const item = typeof a === "string" ? { id: newId(), title: a, organizer: "", month: "", year: "" } : a
         return item.id === id ? { ...item, [field]: value } : item
       }),
     }))
@@ -1349,7 +1360,7 @@ export function ResumeBuilder() {
                                   <li key={a.id} className="text-[10px] text-gray-700 leading-relaxed">
                                     <span className="font-semibold">{a.title}</span>
                                     {a.organizer && <span> | {a.organizer}</span>}
-                                    {a.year && <span className="float-right italic text-gray-500 ml-2">{a.year}</span>}
+                                    {awardDate(a, resumeLang) && <span className="float-right italic text-gray-500 ml-2 whitespace-nowrap">{awardDate(a, resumeLang)}</span>}
                                   </li>
                                 ))}
                               </ul>
@@ -1586,7 +1597,7 @@ export function ResumeBuilder() {
                                   <li key={a.id} className="text-[10px] text-gray-700 leading-relaxed">
                                     <span className="font-semibold">{a.title}</span>
                                     {a.organizer && <span> | {a.organizer}</span>}
-                                    {a.year && <span className="float-right italic text-gray-500 ml-2">{a.year}</span>}
+                                    {awardDate(a, resumeLang) && <span className="float-right italic text-gray-500 ml-2 whitespace-nowrap">{awardDate(a, resumeLang)}</span>}
                                   </li>
                                 ))}
                               </ul>
@@ -1798,7 +1809,7 @@ export function ResumeBuilder() {
                                   <li key={a.id} className="text-[11px] leading-relaxed">
                                     <span className="font-semibold">{a.title}</span>
                                     {a.organizer && <span> | {a.organizer}</span>}
-                                    {a.year && <span className="italic opacity-70"> ({a.year})</span>}
+                                    {awardDate(a, resumeLang) && <span className="italic opacity-70"> ({awardDate(a, resumeLang)})</span>}
                                   </li>
                                 ))}
                               </ul>
@@ -1937,7 +1948,7 @@ export function ResumeBuilder() {
                                       <span className="w-1 h-1 rounded-full inline-block shrink-0 mt-1.5" style={{ backgroundColor: pal.main }} />
                                       <span><span className="font-semibold">{a.title}</span>{a.organizer && <span className="text-muted-foreground"> | {a.organizer}</span>}</span>
                                     </span>
-                                    {a.year && <span className="text-[10px] text-muted-foreground shrink-0">{a.year}</span>}
+                                    {awardDate(a, resumeLang) && <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap">{awardDate(a, resumeLang)}</span>}
                                   </div>
                                 ))}
                               </div>
@@ -2593,7 +2604,7 @@ export function ResumeBuilder() {
                             <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No awards yet." : "Belum ada penghargaan."}</p>
                           )}
                           {(resume.awards ?? []).map((raw) => {
-                            const a = typeof raw === "string" ? { id: raw, title: raw, organizer: "", year: "" } : raw
+                            const a = typeof raw === "string" ? { id: raw, title: raw, organizer: "", month: "", year: "" } : raw
                             return (
                               <Card key={a.id} className="border-border/50">
                                 <CardContent className="pt-4">
@@ -2602,14 +2613,29 @@ export function ResumeBuilder() {
                                       <Label>{resumeLang === "en" ? "Placement + Name" : "Juara + Nama"}</Label>
                                       <Input value={a.title} onChange={(e) => updateAwardItem(a.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. 2nd Place Hackathon 2025" : "cth. Juara 2 Hackathon 2025"} />
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-1 gap-3">
                                       <div className="space-y-2">
                                         <Label>{resumeLang === "en" ? "Organizer" : "Penyelenggara"}</Label>
                                         <Input value={a.organizer} onChange={(e) => updateAwardItem(a.id, "organizer", e.target.value)} placeholder="Komdigi, Microsoft" />
                                       </div>
-                                      <div className="space-y-2">
-                                        <Label>{resumeLang === "en" ? "Year" : "Tahun"}</Label>
-                                        <Input value={a.year} onChange={(e) => updateAwardItem(a.id, "year", e.target.value)} placeholder="2025" />
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                          <Label>{resumeLang === "en" ? "Month" : "Bulan"}</Label>
+                                          <select
+                                            value={a.month ?? ""}
+                                            onChange={(e) => updateAwardItem(a.id, "month", e.target.value)}
+                                            className="w-full h-10 rounded-xl border-2 border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors cursor-pointer"
+                                          >
+                                            <option value="">—</option>
+                                            {(resumeLang === "en" ? MONTH_SHORT_EN : MONTH_SHORT_ID).map((m, i) => (
+                                              <option key={i + 1} value={String(i + 1).padStart(2, "0")}>{m}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                          <Label>{resumeLang === "en" ? "Year" : "Tahun"}</Label>
+                                          <Input value={a.year} onChange={(e) => updateAwardItem(a.id, "year", e.target.value)} placeholder="2025" />
+                                        </div>
                                       </div>
                                     </div>
                                   </div>

@@ -662,17 +662,18 @@ export function normalizeResumeData(r: any): ResumeData {
   const legacyAch: string[] = toArray<any>(r?.achievements).map((a) => typeof a === "string" ? a : String(a?.name || a?.title || a?.description || "")).filter(Boolean)
   const toAward = (a: any) => {
     if (typeof a === "string") {
-      return { id: `aw_${Math.random().toString(36).slice(2, 8)}`, title: a.trim(), organizer: "", year: "" }
+      return { id: `aw_${Math.random().toString(36).slice(2, 8)}`, title: a.trim(), organizer: "", month: "", year: "" }
     }
     return {
       id: a?.id || `aw_${Math.random().toString(36).slice(2, 8)}`,
       title: String(a?.title || a?.name || "").trim(),
       organizer: String(a?.organizer || a?.issuer || "").trim(),
       year: String(a?.year || "").trim(),
+      month: String(a?.month || "").trim(),
     }
   }
   const rawAwards = toArray<any>(r?.awards)
-  let awards: Array<{ id: string; title: string; organizer: string; year: string }>
+  let awards: Array<{ id: string; title: string; organizer: string; month: string; year: string }>
   if (rawAwards.some((a) => typeof a === "object" && (a?.title || a?.name))) {
     awards = rawAwards.map(toAward).filter((a) => a.title)
   } else {
@@ -1564,7 +1565,7 @@ Kembalikan JSON dengan struktur persis seperti ini:
   "research": [{ "id": "rs_1", "title": "Research Title", "status": "Under Review", "organization": "Lab Name, University", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "2023-12", "current": false, "description": "Contribution one\nContribution two with measured result" }, { "id": "rs_2", "title": "Second Research", "status": "Awaiting Publication", "organization": "Lab Name", "location": "", "startDate": "2024-01", "endDate": "", "current": true, "description": "Ongoing contribution" }],
   "skillGroups": [{ "id": "sg_1", "title": "Programming Languages", "items": ["JavaScript", "TypeScript", "Python", "SQL"] }, { "id": "sg_2", "title": "Frontend", "items": ["React.js", "Next.js", "Tailwind CSS"] }, { "id": "sg_3", "title": "Backend & APIs", "items": ["Node.js", "RESTful API Development", "Microservices Architecture"] }, { "id": "sg_4", "title": "Databases", "items": ["PostgreSQL", "Redis"] }],
   "projects": [{ "id": "proj_1", "name": "Project Name", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-name", "technologies": ["Tech1", "Tech2"] }, { "id": "proj_2", "name": "Project Two", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-two", "technologies": ["Tech3"] }],
-  "awards": [{ "id": "aw_1", "title": "2nd Place Hackathon 2025", "organizer": "Komdigi, Microsoft", "year": "2025" }, { "id": "aw_2", "title": "Best Graduate 2020", "organizer": "University", "year": "2020" }],
+  "awards": [{ "id": "aw_1", "title": "2nd Place Hackathon 2025", "organizer": "Komdigi, Microsoft", "month": "11", "year": "2025" }, { "id": "aw_2", "title": "Best Graduate 2020", "organizer": "University", "month": "08", "year": "2020" }],
   "certifications": ["AWS Certified Cloud Practitioner", "Google Project Management"],
   "languages": ["Indonesian (native)", "English (professional working proficiency)"]
 }
@@ -1586,7 +1587,7 @@ Benefits: ${toArray<string>(jobPosting.benefits).join(", ")}
 Education Requirements: ${toArray<string>(jobPosting.educationRequirements).join(", ")}
 
 Buat data resume yang menunjukkan kandidat ideal untuk posisi ini dengan pengalaman, pendidikan, dan skill yang relevan.
-Semua data boleh fiktif tapi harus realistis dan spesifik. ISI SEMUA FIELD, jangan ada yang kosong kecuali foto: 3 pengalaman kerja (deskripsi bullet, tiap baris = 1 pencapaian terukur), 2 pengalaman organisasi, 2 pendidikan (1 universitas lengkap dengan thesis multi-bullet, 1 SMA level school), 2 riset mandiri (judul + deskripsi bullet ber-angka), 4-5 skillGroups berkategori spesifik (cth. Programming Languages, Frontend, Backend & APIs, Databases — tiap grup 3-7 items), 3 proyek (deskripsi bullet + url github dummy + technologies terisi), 3-4 awards (tiap award: title, organizer, year), 2-3 certifications, dan 2-3 bahasa. Kosongkan hanya photo (wajah milik user, tidak boleh difabrikasi). Buat SELENGKAP mungkin agar user melihat versi paling penuh.
+Semua data boleh fiktif tapi harus realistis dan spesifik. ISI SEMUA FIELD, jangan ada yang kosong kecuali foto: 3 pengalaman kerja (deskripsi bullet, tiap baris = 1 pencapaian terukur), 2 pengalaman organisasi, 2 pendidikan (1 universitas lengkap dengan thesis multi-bullet, 1 SMA level school), 2 riset mandiri (judul + deskripsi bullet ber-angka), 4-5 skillGroups berkategori spesifik (cth. Programming Languages, Frontend, Backend & APIs, Databases — tiap grup 3-7 items), 3 proyek (deskripsi bullet + url github dummy + technologies terisi), 3-4 awards (tiap award: title, organizer, month 01-12, year), 2-3 certifications, dan 2-3 bahasa. Kosongkan hanya photo (wajah milik user, tidak boleh difabrikasi). Buat SELENGKAP mungkin agar user melihat versi paling penuh.
 GAYA BAHASA WAJIB KUANTITATIF DAN MEMBUKTIKAN: setiap bullet pengalaman, organisasi, proyek, dan ringkasan harus memuat angka konkret (jumlah, persen, waktu, skala) yang membuktikan dampak, cth. "Cut page load time by 45%", "Mentored 3 juniors", "serving 50k daily events". DILARANG kalimat generik tanpa angka seperti "responsible for", "helped with", "worked on".`
 
   const parsed = await extractJsonFromLLM<Partial<ResumeData>>(prompt, systemPrompt, config)
