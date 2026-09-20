@@ -1,4 +1,4 @@
-import type { ApiProvider, ATSAnalysis, JobPosting, JobStream, ProviderModel, ResumeData, ProviderConfig, ReasoningEffort } from "@/types"
+import type { ApiProvider, ATSAnalysis, JobPosting, JobStream, ProviderModel, ResumeData, ResumeEducation, ResumeResearch, ProviderConfig, ReasoningEffort } from "@/types"
 import { PROVIDERS } from "@/types"
 import { buildExclusionTerms, sanitizeKeywordList } from "@/lib/keywords"
 
@@ -697,7 +697,7 @@ export function normalizeResumeData(r: any): ResumeData {
     : legacySkills.length > 0
       ? [{ id: `sg_${Math.random().toString(36).slice(2, 8)}`, title: "", items: legacySkills.map((s) => s.name) }]
       : []
-  const education = toArray(r?.education).map((e: any) => ({
+  const education: ResumeEducation[] = toArray(r?.education).map((e: any) => ({
     id: e?.id || `edu_${Math.random().toString(36).slice(2, 8)}`,
     institution: String(e?.institution || ""),
     degree: String(e?.degree || ""),
@@ -711,7 +711,7 @@ export function normalizeResumeData(r: any): ResumeData {
     researchTitle: String(e?.researchTitle || ""),
     researchDescription: String(e?.researchDescription || ""),
   }))
-  const research = toArray(r?.research).map((e: any) => {
+  const research: ResumeResearch[] = toArray(r?.research).map((e: any) => {
     const desc = Array.isArray(e?.description) ? e.description.join("\n") : (e?.description ? String(e.description) : "")
     return {
       id: e?.id || `rs_${Math.random().toString(36).slice(2, 8)}`,
@@ -729,7 +729,7 @@ export function normalizeResumeData(r: any): ResumeData {
   // Persist-nya ikut saat state yang sudah dinormalisasi disimpan kembali.
   if (research.length === 0) {
     for (const e of education) {
-      if (e.researchTitle.trim() || e.researchDescription.trim()) {
+      if ((e.researchTitle ?? "").trim() || (e.researchDescription ?? "").trim()) {
         research.push({
           id: `rs_${Math.random().toString(36).slice(2, 8)}`,
           title: e.researchTitle.trim() || "Research",
