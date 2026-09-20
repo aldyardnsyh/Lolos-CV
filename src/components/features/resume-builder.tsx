@@ -1171,13 +1171,22 @@ export function ResumeBuilder() {
                             <div className="space-y-2">
                               {resume.projects.map((proj) => (
                                 <div key={proj.id} className="print:break-inside-avoid">
-                                  <p className="text-[11px] font-bold text-gray-900">{proj.name}</p>
+                                  <p className="text-[11px] font-bold text-gray-900">
+                                    {proj.name}
+                                    {proj.url && <span className="font-normal text-gray-500"> — {proj.url}</span>}
+                                  </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {String(proj.description).split("\n").filter(Boolean).map((line, i) => (
                                         <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{line}</li>
                                       ))}
                                     </ul>
+                                  )}
+                                  {(proj.technologies ?? []).length > 0 && (
+                                    <p className="text-[10px] text-gray-600 mt-0.5">
+                                      <span className="font-semibold">{resumeLang === "en" ? "Tech: " : "Teknologi: "}</span>
+                                      {(proj.technologies ?? []).join(" | ")}
+                                    </p>
                                   )}
                                 </div>
                               ))}
@@ -1355,13 +1364,22 @@ export function ResumeBuilder() {
                             <div className="space-y-2">
                               {resume.projects.map((proj) => (
                                 <div key={proj.id} className="print:break-inside-avoid">
-                                  <p className="text-[11px] font-bold text-gray-900">{proj.name}</p>
+                                  <p className="text-[11px] font-bold text-gray-900">
+                                    {proj.name}
+                                    {proj.url && <span className="font-normal text-gray-500"> — {proj.url}</span>}
+                                  </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {String(proj.description).split("\n").filter(Boolean).map((line, i) => (
                                         <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{line}</li>
                                       ))}
                                     </ul>
+                                  )}
+                                  {(proj.technologies ?? []).length > 0 && (
+                                    <p className="text-[10px] text-gray-600 mt-0.5">
+                                      <span className="font-semibold">{resumeLang === "en" ? "Tech: " : "Teknologi: "}</span>
+                                      {(proj.technologies ?? []).join(" | ")}
+                                    </p>
                                   )}
                                 </div>
                               ))}
@@ -1556,13 +1574,31 @@ export function ResumeBuilder() {
                             <div className="space-y-2 mt-2">
                               {resume.projects.map((proj) => (
                                 <div key={proj.id} className="p-2.5 rounded-xl border print:break-inside-avoid" style={{ borderColor: pal.main, backgroundColor: pal.soft }}>
-                                  <p className="text-sm font-bold">{proj.name}</p>
+                                  <p className="text-sm font-bold">
+                                    {proj.name}
+                                    {proj.url && (
+                                      <a
+                                        href={/^https?:\/\//i.test(proj.url) ? proj.url : `https://${proj.url}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="ml-2 text-[11px] font-medium underline underline-offset-2"
+                                        style={{ color: pal.main }}
+                                      >
+                                        {proj.url}
+                                      </a>
+                                    )}
+                                  </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-1.5 space-y-0.5">
                                       {String(proj.description).split("\n").filter(Boolean).map((line, i) => (
                                         <li key={i} className="text-[11px] leading-relaxed">{line}</li>
                                       ))}
                                     </ul>
+                                  )}
+                                  {(proj.technologies ?? []).length > 0 && (
+                                    <p className="text-[11px] font-semibold mt-1.5" style={{ color: pal.main }}>
+                                      {(proj.technologies ?? []).join(" | ")}
+                                    </p>
                                   )}
                                 </div>
                               ))}
@@ -1767,13 +1803,22 @@ export function ResumeBuilder() {
                             <div className="space-y-2">
                               {resume.projects.map((proj) => (
                                 <div key={proj.id} className="print:break-inside-avoid">
-                                  <p className="text-sm font-semibold">{proj.name}</p>
+                                  <p className="text-sm font-semibold">
+                                    {proj.name}
+                                    {proj.url && <span className="font-normal text-[11px] text-muted-foreground"> — {proj.url}</span>}
+                                  </p>
                                   {proj.description && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {String(proj.description).split("\n").filter(Boolean).map((line, i) => (
                                         <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</li>
                                       ))}
                                     </ul>
+                                  )}
+                                  {(proj.technologies ?? []).length > 0 && (
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                                      <span className="font-semibold text-foreground">{resumeLang === "en" ? "Tech: " : "Teknologi: "}</span>
+                                      {(proj.technologies ?? []).join(" | ")}
+                                    </p>
                                   )}
                                 </div>
                               ))}
