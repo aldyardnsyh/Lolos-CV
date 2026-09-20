@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Plus_Jakarta_Sans, Poppins } from "next/font/google"
+import { SITE_URL } from "@/lib/site"
 import "./globals.css"
 
 const jakarta = Plus_Jakarta_Sans({
@@ -16,14 +17,35 @@ const poppins = Poppins({
 })
 
 export const metadata: Metadata = {
-  title: "LolosCV - Buat CV yang Lolos Seleksi ATS",
-  description: "Buat CV ATS-friendly yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, dan optimalkan skor ATS CV kamu.",
-  keywords: ["pembuat cv", "cv builder", "cv ATS", "ATS friendly", "CV online", "resume builder", "lowongan kerja", "optimasi CV"],
-  authors: [{ name: "LolosCV" }],
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "LolosCV - Buat CV yang Lolos Seleksi ATS (Gratis)",
+    template: "%s | LolosCV",
+  },
+  description:
+    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF — gratis tanpa batas.",
+  keywords: [
+    "pembuat cv", "buat cv online", "cv builder indonesia", "cv ATS",
+    "ATS friendly", "CV online gratis", "resume builder", "contoh CV ATS",
+    "cara lolos seleksi ATS", "optimasi CV", "template CV ATS",
+  ],
+  authors: [{ name: "PogungSoftwareHouseTeam (PSHT)" }],
+  creator: "PogungSoftwareHouseTeam (PSHT)",
+  robots: { index: true, follow: true },
   openGraph: {
-    title: "LolosCV - Buat CV yang Lolos Seleksi ATS",
-    description: "Buat CV ATS-friendly yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, dan optimalkan skor ATS CV kamu.",
+    title: "LolosCV - Buat CV yang Lolos Seleksi ATS (Gratis)",
+    description:
+      "Tempel link lowongan, analisis persyaratan dengan AI, dan hasilkan CV ATS-friendly siap export PDF.",
+    url: SITE_URL,
+    siteName: "LolosCV",
+    locale: "id_ID",
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LolosCV - Buat CV yang Lolos Seleksi ATS (Gratis)",
+    description:
+      "Tempel link lowongan, analisis persyaratan dengan AI, dan hasilkan CV ATS-friendly siap export PDF.",
   },
 }
 
