@@ -716,6 +716,7 @@ export function normalizeResumeData(r: any): ResumeData {
     return {
       id: e?.id || `rs_${Math.random().toString(36).slice(2, 8)}`,
       title: String(e?.title || e?.name || ""),
+      status: String(e?.status || ""),
       organization: String(e?.organization || e?.institution || e?.lab || ""),
       location: String(e?.location || ""),
       startDate: String(e?.startDate || ""),
@@ -733,6 +734,7 @@ export function normalizeResumeData(r: any): ResumeData {
         research.push({
           id: `rs_${Math.random().toString(36).slice(2, 8)}`,
           title: (e.researchTitle ?? "").trim() || "Research",
+          status: "",
           organization: e.institution,
           location: "",
           startDate: e.startDate,
@@ -1251,7 +1253,7 @@ function computeDeterministicAts(resume: ResumeData, jobPosting: JobPosting): Pa
     resume.summary,
     ...resume.experiences.flatMap((e) => [e.position, e.company, e.description]),
     ...(resume.organizations ?? []).flatMap((o) => [o.position, o.organization, o.description]),
-    ...(resume.research ?? []).flatMap((x) => [x.title, x.organization, x.description]),
+    ...(resume.research ?? []).flatMap((x) => [x.title, x.status, x.organization, x.description]),
     ...resume.education.map((e) => `${e.degree} ${e.field} ${e.institution} ${e.thesisTitle ?? ""} ${e.thesisDescription ?? ""} ${e.researchTitle ?? ""} ${e.researchDescription ?? ""}`),
     ...resume.skills.map((s) => s.name),
     ...(resume.skillGroups ?? []).flatMap((g) => [g.title, ...g.items]),
@@ -1406,7 +1408,7 @@ export function preserveOriginalFacts(original: ResumeData, optimized: ResumeDat
       .filter((x) => origRes.has(x.id))
       .map((x) => {
         const o = origRes.get(x.id)!
-        return { ...x, title: o.title, organization: o.organization, location: o.location, startDate: o.startDate, endDate: o.endDate, current: o.current }
+        return { ...x, title: o.title, status: o.status, organization: o.organization, location: o.location, startDate: o.startDate, endDate: o.endDate, current: o.current }
       }),
     ...(original.research ?? []).filter((x) => !(optimized.research ?? []).some((y) => y.id === x.id)),
   ]
@@ -1519,7 +1521,7 @@ Kembalikan JSON dengan struktur persis seperti ini:
   "experiences": [{ "id": "exp_1", "company": "Company Name", "position": "Job Title", "location": "Jakarta, Indonesia", "startDate": "2020-01", "endDate": "2023-12", "current": false, "description": "Led a team of 5 developers\nImproved system efficiency by 40%\nImplemented CI/CD pipeline reducing deploy time by 60%" }],
   "organizations": [{ "id": "org_1", "organization": "Organization Name", "position": "Role", "location": "Jakarta, Indonesia", "startDate": "2021-01", "endDate": "2022-12", "current": false, "description": "Coordinated 20 volunteers\nOrganized monthly tech meetups" }, { "id": "org_2", "organization": "Tech Community", "position": "Event Volunteer", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "", "current": true, "description": "Host monthly meetups\nOnboard new speakers" }],
   "education": [{ "id": "edu_1", "institution": "University Name", "degree": "B.Sc.", "field": "Major", "startDate": "2015-08", "endDate": "2019-06", "gpa": "3.50", "level": "univ", "thesisTitle": "Thesis Title", "thesisDescription": "What was built\nHow it was evaluated\nKey result", "researchTitle": "", "researchDescription": "" }, { "id": "edu_2", "institution": "High School Name", "degree": "", "field": "Science", "startDate": "2012-07", "endDate": "2015-06", "gpa": "", "level": "school", "thesisTitle": "", "thesisDescription": "", "researchTitle": "", "researchDescription": "" }],
-  "research": [{ "id": "rs_1", "title": "Research Title", "organization": "Lab Name, University", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "2023-12", "current": false, "description": "Contribution one\nContribution two with measured result" }, { "id": "rs_2", "title": "Second Research", "organization": "Lab Name", "location": "", "startDate": "2024-01", "endDate": "", "current": true, "description": "Ongoing contribution" }],
+  "research": [{ "id": "rs_1", "title": "Research Title", "status": "Under Review", "organization": "Lab Name, University", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "2023-12", "current": false, "description": "Contribution one\nContribution two with measured result" }, { "id": "rs_2", "title": "Second Research", "status": "Awaiting Publication", "organization": "Lab Name", "location": "", "startDate": "2024-01", "endDate": "", "current": true, "description": "Ongoing contribution" }],
   "skillGroups": [{ "id": "sg_1", "title": "Programming Languages", "items": ["JavaScript", "TypeScript", "Python", "SQL"] }, { "id": "sg_2", "title": "Frontend", "items": ["React.js", "Next.js", "Tailwind CSS"] }, { "id": "sg_3", "title": "Backend & APIs", "items": ["Node.js", "RESTful API Development", "Microservices Architecture"] }, { "id": "sg_4", "title": "Databases", "items": ["PostgreSQL", "Redis"] }],
   "projects": [{ "id": "proj_1", "name": "Project Name", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-name", "technologies": ["Tech1", "Tech2"] }, { "id": "proj_2", "name": "Project Two", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-two", "technologies": ["Tech3"] }],
   "awards": ["AWS Certified Cloud Practitioner", "Best Graduate 2020", "Exceeded quarterly team target by 15% in 2023"],

@@ -174,6 +174,7 @@ export function buildMockSampleResume(job: JobPosting | null): ResumeData {
       {
         id: "rs_1",
         title: "Hate Speech Detection in Indonesian Tweets",
+        status: "Published",
         organization: "AI Lab, Universitas Indonesia",
         location: "Jakarta, Indonesia",
         startDate: "2023-03",
@@ -184,6 +185,7 @@ export function buildMockSampleResume(job: JobPosting | null): ResumeData {
       {
         id: "rs_2",
         title: "Low-Resource Machine Translation",
+        status: "Under Review",
         organization: "AI Lab, Universitas Indonesia",
         location: "Jakarta, Indonesia",
         startDate: "2024-01",

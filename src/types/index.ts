@@ -63,6 +63,7 @@ export interface ResumeOrganization {
 export interface ResumeResearch {
   id: string
   title: string
+  status: string
   organization: string
   location: string
   startDate: string

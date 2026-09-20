@@ -634,7 +634,7 @@ export function ResumeBuilder() {
     setResume((prev) => ({
       ...prev,
       research: [...(prev.research ?? []), {
-        id: newId(), title: "", organization: "", location: "", startDate: "", endDate: "", current: false, description: "",
+        id: newId(), title: "", status: "", organization: "", location: "", startDate: "", endDate: "", current: false, description: "",
       }],
     }))
   }
@@ -1210,7 +1210,10 @@ export function ResumeBuilder() {
                                 <div key={rs.id} className="print:break-inside-avoid">
                                   <div className="flex justify-between items-start gap-2">
                                     <div>
-                                      <p className="text-[11px] font-bold text-gray-900">{rs.title}</p>
+                                      <p className="text-[11px] font-bold text-gray-900">
+                                        {rs.title}
+                                        {rs.status && <span className="font-normal italic text-gray-500"> | {rs.status}</span>}
+                                      </p>
                                       {rs.organization && <p className="text-[10px] italic text-gray-600">{rs.organization}</p>}
                                     </div>
                                     <div className="text-right shrink-0">
@@ -1433,7 +1436,10 @@ export function ResumeBuilder() {
                                 <div key={rs.id} className="print:break-inside-avoid">
                                   <div className="flex justify-between items-start gap-2">
                                     <div>
-                                      <p className="text-[11px] font-bold text-gray-900">{rs.title}</p>
+                                      <p className="text-[11px] font-bold text-gray-900">
+                                        {rs.title}
+                                        {rs.status && <span className="font-normal italic text-gray-500"> | {rs.status}</span>}
+                                      </p>
                                       {rs.organization && <p className="text-[10px] italic text-gray-600">{rs.organization}</p>}
                                     </div>
                                     <div className="text-right shrink-0">
@@ -1655,7 +1661,10 @@ export function ResumeBuilder() {
                                 <div key={rs.id} className="p-2.5 rounded-xl border print:break-inside-avoid" style={{ borderColor: pal.main, backgroundColor: pal.soft }}>
                                   <div className="flex justify-between items-start">
                                     <div>
-                                      <p className="text-sm font-bold">{rs.title}</p>
+                                      <p className="text-sm font-bold">
+                                        {rs.title}
+                                        {rs.status && <span className="font-medium text-[11px] text-muted-foreground"> | {rs.status}</span>}
+                                      </p>
                                       {rs.organization && <p className="text-[11px] text-muted-foreground">{rs.organization}</p>}
                                     </div>
                                     {(rs.startDate || rs.endDate || rs.current) && (
@@ -1908,7 +1917,10 @@ export function ResumeBuilder() {
                                   <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start">
                                       <div>
-                                        <p className="text-sm font-semibold">{rs.title}</p>
+                                        <p className="text-sm font-semibold">
+                                        {rs.title}
+                                        {rs.status && <span className="font-normal text-[11px] text-muted-foreground"> | {rs.status}</span>}
+                                      </p>
                                         {rs.organization && <p className="text-[11px] text-muted-foreground">{rs.organization}</p>}
                                       </div>
                                       {(rs.startDate || rs.endDate || rs.current) && (
@@ -2218,6 +2230,10 @@ export function ResumeBuilder() {
                                 <div className="space-y-2">
                                   <Label>{resumeLang === "en" ? "Research Title" : "Judul Riset"}</Label>
                                   <Input value={rs.title} onChange={(e) => updateResearch(rs.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Hate Speech Detection in Indonesian Tweets" : "cth. Deteksi Ujaran Kebencian di Tweet Indonesia"} />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>{resumeLang === "en" ? "Paper Status (optional)" : "Status Paper (opsional)"}</Label>
+                                  <Input value={rs.status ?? ""} onChange={(e) => updateResearch(rs.id, "status", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Under Review, Published, Awaiting Publication" : "cth. Under Review, Published, Awaiting Publication"} />
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-2">
