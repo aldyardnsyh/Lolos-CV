@@ -36,7 +36,7 @@ export default function RootLayout({
     <html lang="id" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{
-          __html: `try{var t=localStorage.getItem("theme");if(!t&&window.matchMedia("(prefers-color-scheme:dark)").matches)t="dark";if(t==="dark")document.documentElement.classList.add("dark")}catch(e){}`
+          __html: `try{if(localStorage.getItem("theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`
         }} />
       </head>
       <body className={`${jakarta.variable} ${poppins.variable} min-h-screen`}>
