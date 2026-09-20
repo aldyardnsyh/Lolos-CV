@@ -18,6 +18,7 @@ import { cn, formatResumeDate, isSafePhotoSrc } from "@/lib/utils"
 import { generateResumeContent, generateSummary, generateSampleResume, translateResume, getApiConfig, safeLocalGet, safeLocalSet, normalizeResumeData } from "@/lib/api"
 import { buildMockSampleResume } from "@/lib/sample-mock"
 import { useSampleGenerating } from "@/lib/sample-generation"
+import { pushBusy } from "@/lib/busy"
 import { CVUploader } from "@/components/features/cv-uploader"
 import type { ResumeData, ResumeTemplate, ResumeExperience, ResumeEducation, ResumeSkill, JobPosting } from "@/types"
 
@@ -296,18 +297,26 @@ export function ResumeBuilder() {
 
   const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
 
+  // Edit & preview = dua layer terpisah: masing-masing ingat posisi
+  // scroll-nya sendiri, jadi pindah mode tidak melemparmu ke posisi asing.
+  const editScrollRef = useRef(0)
+  const previewScrollRef = useRef(0)
   const togglePreview = () => {
-    setPreview((p) => !p)
-  }
-
-  const handleToolbarDownload = () => {
-    if (exportingPdf) return
-    if (!preview) {
-      setPreview(true)
-      window.setTimeout(() => setShowSupportPrompt(true), 400)
+    const goingToPreview = !preview
+    if (goingToPreview) {
+      editScrollRef.current = window.scrollY
     } else {
-      setShowSupportPrompt(true)
+      previewScrollRef.current = window.scrollY
     }
+    setPreview(goingToPreview)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          top: goingToPreview ? previewScrollRef.current : editScrollRef.current,
+          behavior: "auto",
+        })
+      })
+    })
   }
 
   // Generate bersifat destruktif (replace seluruh isi) → minta konfirmasi
@@ -482,6 +491,7 @@ export function ResumeBuilder() {
   const handleGenerateSample = async () => {
     if (generatingSample) return
     setGeneratingSample(true)
+    const doneBusy = pushBusy(resumeLang === "en" ? "Generating sample CV..." : "Membuat contoh CV...")
     try {
       const stored = safeLocalGet("job_analysis")
       if (!stored) {
@@ -507,6 +517,7 @@ export function ResumeBuilder() {
     } catch (err: any) {
       showToast(`Gagal: ${err.message}`, "error")
     } finally {
+      doneBusy()
       setGeneratingSample(false)
     }
   }
@@ -531,6 +542,7 @@ export function ResumeBuilder() {
       return
     }
     setTranslating(true)
+    const doneBusy = pushBusy(resumeLang === "en" ? "Translating resume..." : "Menerjemahkan resume...")
     try {
       const translated = await translateResume(resume, next)
       setResume(translated)
@@ -540,6 +552,7 @@ export function ResumeBuilder() {
     } catch (err: any) {
       showToast(`Gagal menerjemahkan: ${err.message}`, "error")
     } finally {
+      doneBusy()
       setTranslating(false)
     }
   }
@@ -679,6 +692,7 @@ export function ResumeBuilder() {
       return
     }
     setAiLoading(section)
+    const doneBusy = pushBusy(resumeLang === "en" ? "AI is writing..." : "AI sedang menulis...")
     try {
       if (section === "summary") {
         const targetRole = resume.experiences[0]?.position || "Posisi target"
@@ -703,12 +717,14 @@ export function ResumeBuilder() {
     } catch (err: any) {
       showToast(`Gagal: ${err.message}`, "error")
     } finally {
+      doneBusy()
       setAiLoading(null)
     }
   }, [resume])
 
   const handleDownloadPdf = async () => {
     setExportingPdf(true)
+    const doneBusy = pushBusy(resumeLang === "en" ? "Preparing PDF..." : "Menyiapkan PDF...")
 
     try {
       const previewEl = document.getElementById("resume-preview-content")
@@ -753,9 +769,11 @@ export function ResumeBuilder() {
       // Cleanup after print dialog closes
       setTimeout(() => {
         document.body.removeChild(clone)
+        doneBusy()
         setExportingPdf(false)
       }, 500)
     } catch (err) {
+      doneBusy()
       showToast("Gagal export: " + (err instanceof Error ? err.message : "unknown error"), "error")
       setExportingPdf(false)
     }
@@ -899,10 +917,13 @@ export function ResumeBuilder() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
+            <h3 className="text-lg font-bold px-1">{preview ? "Preview CV" : "Edit CV"}</h3>
             <div className="sticky top-16 z-30 -mx-1 px-1 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 rounded-xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold">{preview ? "Preview CV" : "Edit CV"}</h3>
-              <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground pl-1">
+                {resumeLang === "en" ? "Customize" : "Kustomisasi"}
+              </span>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 <Button variant="outline" size="sm" onClick={togglePreview} className="gap-2">
                   {preview ? <Edit3 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   {preview ? "Edit" : "Preview"}
@@ -1001,11 +1022,6 @@ export function ResumeBuilder() {
                   ))}
                 </div>
               )}
-              <div className="flex-1" />
-              <Button size="sm" className="gap-2" onClick={handleToolbarDownload} disabled={exportingPdf}>
-                {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                PDF
-              </Button>
             </div>
             </div>
 

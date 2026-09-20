@@ -5,6 +5,7 @@ import { Menu, X, Sparkles, Settings, CheckCircle2, Key, Sun, Moon } from "lucid
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getApiConfig } from "@/lib/api"
+import { GlobalBusyBar } from "@/components/layout/global-busy"
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -165,6 +166,7 @@ export function Navbar() {
           </Button>
         </div>
       </div>
+      <GlobalBusyBar />
     </header>
   )
 }

@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { analyzeATS, getApiConfig, normalizeResumeData, optimizeResumeContent, safeLocalGet, safeLocalSet } from "@/lib/api"
 import { buildExclusionTerms, extractMeaningfulTokens } from "@/lib/keywords"
+import { pushBusy } from "@/lib/busy"
 import type { ResumeData, JobPosting, ATSAnalysis } from "@/types"
 
 const demoScores: ATSAnalysis = {
@@ -136,6 +137,7 @@ export function AtsOptimizer() {
     if (!storedResume || !storedJob) return
 
     setOptimizing(true)
+    const doneBusyOptimize = pushBusy("Mengoptimasi resume...")
     setError(null)
     try {
       const resume: ResumeData = normalizeResumeData(JSON.parse(storedResume))
@@ -159,12 +161,14 @@ export function AtsOptimizer() {
     } catch (err: any) {
       setError(err.message)
     } finally {
+      doneBusyOptimize()
       setOptimizing(false)
     }
   }
 
   const handleAnalyze = useCallback(async () => {
     setAnalyzing(true)
+    const doneBusyAnalyze = pushBusy("Menganalisis skor ATS...")
     setResult(null)
     setError(null)
     setIsDemo(false)
@@ -177,7 +181,7 @@ export function AtsOptimizer() {
       setIsDemo(true)
       await new Promise((r) => setTimeout(r, 1500))
       setResult(demoScores)
-      setAnalyzing(false)
+      doneBusyAnalyze(); setAnalyzing(false)
       return
     }
 
@@ -198,7 +202,7 @@ export function AtsOptimizer() {
         setError("Data tersimpan korup dan tidak bisa dibaca. Isi ulang resume/lowongan lalu coba lagi.")
         await new Promise((r) => setTimeout(r, 800))
         setResult(demoScores)
-        setAnalyzing(false)
+        doneBusyAnalyze(); setAnalyzing(false)
         return
       }
       try {
@@ -219,7 +223,7 @@ export function AtsOptimizer() {
       setResult(demoScores)
     }
 
-    setAnalyzing(false)
+    doneBusyAnalyze(); setAnalyzing(false)
   }, [])
 
   const getScoreColor = (score: number) => {
