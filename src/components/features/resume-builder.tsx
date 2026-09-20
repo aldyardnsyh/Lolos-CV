@@ -1222,7 +1222,7 @@ export function ResumeBuilder() {
                                   {edu.thesisDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.thesisDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1234,7 +1234,7 @@ export function ResumeBuilder() {
                                   {edu.researchDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1422,7 +1422,7 @@ export function ResumeBuilder() {
                                   {edu.thesisDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.thesisDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1434,7 +1434,7 @@ export function ResumeBuilder() {
                                   {edu.researchDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1567,7 +1567,7 @@ export function ResumeBuilder() {
                                   {edu.thesisDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.thesisDescription).map((line, i) => (
-                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1579,7 +1579,7 @@ export function ResumeBuilder() {
                                   {edu.researchDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1731,7 +1731,7 @@ export function ResumeBuilder() {
                                     {edu.thesisDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.thesisDescription).map((line, i) => (
-                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1743,7 +1743,7 @@ export function ResumeBuilder() {
                                     {edu.researchDescription && (
                                     <ul className="list-disc list-inside mt-0.5 space-y-0.5">
                                       {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</li>
+                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
