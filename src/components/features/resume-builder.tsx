@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronUp, User, Users, Briefcase, GraduationCap, Wrench,
   Globe, Award, Languages, CheckCircle2, AlertCircle, Upload, Wand2,
   EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X,
-  LayoutTemplate, Type, ALargeSmall,
+  LayoutTemplate, Type, ALargeSmall, FlaskConical,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -165,6 +165,7 @@ function createEmptyResume(): ResumeData {
     experiences: [],
     organizations: [],
     education: [],
+    research: [],
     skills: [],
     skillGroups: [],
     projects: [],
@@ -177,11 +178,11 @@ function createEmptyResume(): ResumeData {
 
 type ResumeSectionId =
   | "summary" | "experiences" | "organizations" | "projects" | "education"
-  | "skills" | "awards" | "languages"
+  | "research" | "skills" | "awards" | "languages"
 
 const DEFAULT_SECTION_ORDER: ResumeSectionId[] = [
   "summary", "experiences", "organizations", "projects", "education",
-  "skills", "awards", "languages",
+  "research", "skills", "awards", "languages",
 ]
 
 const SECTION_LABELS_EN: Record<ResumeSectionId, string> = {
@@ -190,6 +191,7 @@ const SECTION_LABELS_EN: Record<ResumeSectionId, string> = {
   organizations: "Organizations",
   projects: "Selected Projects",
   education: "Education",
+  research: "Research",
   skills: "Skills",
   awards: "Awards & Certifications",
   languages: "Languages",
@@ -200,6 +202,7 @@ const SECTION_LABELS_ID: Record<ResumeSectionId, string> = {
   organizations: "Organisasi",
   projects: "Proyek Pilihan",
   education: "Pendidikan",
+  research: "Riset",
   skills: "Skills",
   awards: "Penghargaan & Sertifikasi",
   languages: "Bahasa",
@@ -493,6 +496,7 @@ export function ResumeBuilder() {
     resume.experiences.length === 0 &&
     (resume.organizations ?? []).length === 0 &&
     resume.education.length === 0 &&
+    (resume.research ?? []).length === 0 &&
     resume.skills.length === 0 &&
     (resume.skillGroups ?? []).length === 0
 
@@ -624,6 +628,26 @@ export function ResumeBuilder() {
 
   const removeOrganization = (id: string) => {
     setResume((prev) => ({ ...prev, organizations: (prev.organizations ?? []).filter((o) => o.id !== id) }))
+  }
+
+  const addResearch = () => {
+    setResume((prev) => ({
+      ...prev,
+      research: [...(prev.research ?? []), {
+        id: newId(), title: "", organization: "", location: "", startDate: "", endDate: "", current: false, description: "",
+      }],
+    }))
+  }
+
+  const updateResearch = (id: string, field: string, value: any) => {
+    setResume((prev) => ({
+      ...prev,
+      research: (prev.research ?? []).map((x) => x.id === id ? { ...x, [field]: value } : x),
+    }))
+  }
+
+  const removeResearch = (id: string) => {
+    setResume((prev) => ({ ...prev, research: (prev.research ?? []).filter((x) => x.id !== id) }))
   }
 
   const addSkillGroup = () => {
@@ -1178,6 +1202,38 @@ export function ResumeBuilder() {
                             </div>
                           </div>
                         )}
+                        {isSectionVisible("research") && (resume.research ?? []).length > 0 && (
+                          <div className="print:break-inside-avoid" style={{ order: orderOf("research") }}>
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("research", resumeLang)}</h3>
+                            <div className="space-y-2">
+                              {(resume.research ?? []).map((rs) => (
+                                <div key={rs.id} className="print:break-inside-avoid">
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div>
+                                      <p className="text-[11px] font-bold text-gray-900">{rs.title}</p>
+                                      {rs.organization && <p className="text-[10px] italic text-gray-600">{rs.organization}</p>}
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      {rs.location && <p className="text-[9px] italic text-gray-500 leading-snug">{rs.location}</p>}
+                                      {(rs.startDate || rs.endDate || rs.current) && (
+                                        <p className="text-[9px] italic text-gray-500 whitespace-nowrap">
+                                          {formatResumeDate(rs.startDate)}{rs.startDate && " - "}{rs.current ? (resumeLang === "en" ? "Present" : "Sekarang") : formatResumeDate(rs.endDate)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {rs.description && (
+                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                                      {bulletLines(rs.description).map((line, i) => (
+                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {isSectionVisible("projects") && resume.projects.length > 0 && (
                           <div style={{ order: orderOf("projects") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("projects", resumeLang)}</h3>
@@ -1230,18 +1286,7 @@ export function ResumeBuilder() {
                                     ))}
                                   </ul>
                                 )}
-                                {edu.researchTitle && (
-                                  <p className="text-[10px] text-gray-700 mt-0.5">
-                                    <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                  </p>
-                                )}
-                                {edu.researchDescription && (
-                                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                    {bulletLines(edu.researchDescription).map((line, i) => (
-                                      <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
-                                    ))}
-                                  </ul>
-                                )}
+
                               </div>
                             ))}
                           </div>
@@ -1380,6 +1425,38 @@ export function ResumeBuilder() {
                             </div>
                           </div>
                         )}
+                        {isSectionVisible("research") && (resume.research ?? []).length > 0 && (
+                          <div className="print:break-inside-avoid" style={{ order: orderOf("research") }}>
+                            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("research", resumeLang)}</h3>
+                            <div className="space-y-2">
+                              {(resume.research ?? []).map((rs) => (
+                                <div key={rs.id} className="print:break-inside-avoid">
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div>
+                                      <p className="text-[11px] font-bold text-gray-900">{rs.title}</p>
+                                      {rs.organization && <p className="text-[10px] italic text-gray-600">{rs.organization}</p>}
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      {rs.location && <p className="text-[9px] italic text-gray-500 leading-snug">{rs.location}</p>}
+                                      {(rs.startDate || rs.endDate || rs.current) && (
+                                        <p className="text-[9px] italic text-gray-500 whitespace-nowrap">
+                                          {formatResumeDate(rs.startDate)}{rs.startDate && " - "}{rs.current ? (resumeLang === "en" ? "Present" : "Sekarang") : formatResumeDate(rs.endDate)}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {rs.description && (
+                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                                      {bulletLines(rs.description).map((line, i) => (
+                                        <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {isSectionVisible("projects") && resume.projects.length > 0 && (
                           <div style={{ order: orderOf("projects") }}>
                             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-900 border-b-2 border-gray-400 pb-0.5 mb-1 print:break-after-avoid">{getSectionLabel("projects", resumeLang)}</h3>
@@ -1432,18 +1509,7 @@ export function ResumeBuilder() {
                                     ))}
                                   </ul>
                                 )}
-                                {edu.researchTitle && (
-                                  <p className="text-[10px] text-gray-700 mt-0.5">
-                                    <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                  </p>
-                                )}
-                                {edu.researchDescription && (
-                                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                    {bulletLines(edu.researchDescription).map((line, i) => (
-                                      <li key={i} className="text-[10px] text-gray-700 leading-relaxed text-justify">{line}</li>
-                                    ))}
-                                  </ul>
-                                )}
+
                               </div>
                             ))}
                           </div>
@@ -1575,15 +1641,31 @@ export function ResumeBuilder() {
                                       ))}
                                     </ul>
                                   )}
-                                  {edu.researchTitle && (
-                                    <p className="text-[11px] mt-1">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                    </p>
-                                  )}
-                                  {edu.researchDescription && (
-                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                      {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
+
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {isSectionVisible("research") && (resume.research ?? []).length > 0 && (
+                          <div style={{ order: orderOf("research") }}>
+                            <h3 className="text-sm font-bold mb-2 inline-block px-3 py-1 rounded-lg text-white" style={{ backgroundColor: pal.main }}>{getSectionLabel("research", resumeLang)}</h3>
+                            <div className="space-y-2 mt-2">
+                              {(resume.research ?? []).map((rs) => (
+                                <div key={rs.id} className="p-2.5 rounded-xl border print:break-inside-avoid" style={{ borderColor: pal.main, backgroundColor: pal.soft }}>
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <p className="text-sm font-bold">{rs.title}</p>
+                                      {rs.organization && <p className="text-[11px] text-muted-foreground">{rs.organization}</p>}
+                                    </div>
+                                    {(rs.startDate || rs.endDate || rs.current) && (
+                                      <p className="text-[10px] text-muted-foreground shrink-0 ml-2">{formatResumeDate(rs.startDate)} - {rs.current ? (resumeLang === "en" ? "Present" : "Sekarang") : formatResumeDate(rs.endDate)}</p>
+                                    )}
+                                  </div>
+                                  {rs.description && (
+                                    <ul className="list-disc list-inside mt-1.5 space-y-0.5">
+                                      {bulletLines(rs.description).map((line, i) => (
+                                        <li key={i} className="text-[11px] leading-relaxed text-justify">{line}</li>
                                       ))}
                                     </ul>
                                   )}
@@ -1743,18 +1825,7 @@ export function ResumeBuilder() {
                                       ))}
                                     </ul>
                                   )}
-                                  {edu.researchTitle && (
-                                    <p className="text-[11px] mt-1">
-                                      <span className="font-semibold">{resumeLang === "en" ? "Research: " : "Riset: "}</span>{edu.researchTitle}
-                                    </p>
-                                  )}
-                                  {edu.researchDescription && (
-                                    <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                                      {bulletLines(edu.researchDescription).map((line, i) => (
-                                        <li key={i} className="text-[11px] text-muted-foreground leading-relaxed text-justify">{line}</li>
-                                      ))}
-                                    </ul>
-                                  )}
+
                                 </div>
                               ))}
                             </div>
@@ -1815,6 +1886,39 @@ export function ResumeBuilder() {
                                       <ul className="list-disc list-inside mt-1 space-y-0.5">
                                         {bulletLines(org.description).map((line, i) => (
                                           <li key={i} className="text-[11px] leading-relaxed">{line}</li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {isSectionVisible("research") && (resume.research ?? []).length > 0 && (
+                          <div style={{ order: orderOf("research") }}>
+                            <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] mb-2" style={{ color: pal.main }}>{getSectionLabel("research", resumeLang)}</h3>
+                            <div className="space-y-0 relative">
+                              <div className="absolute left-[7px] top-2 bottom-2 w-0.5" style={{ backgroundColor: pal.soft }} />
+                              {(resume.research ?? []).map((rs) => (
+                                <div key={rs.id} className="flex gap-4 pb-3 relative print:break-inside-avoid">
+                                  <div className="w-4 shrink-0 flex justify-center pt-0.5">
+                                    <div className="w-3 h-3 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: pal.main }} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <p className="text-sm font-semibold">{rs.title}</p>
+                                        {rs.organization && <p className="text-[11px] text-muted-foreground">{rs.organization}</p>}
+                                      </div>
+                                      {(rs.startDate || rs.endDate || rs.current) && (
+                                        <p className="text-[10px] text-muted-foreground shrink-0 ml-2">{formatResumeDate(rs.startDate)} - {rs.current ? (resumeLang === "en" ? "Present" : "Sekarang") : formatResumeDate(rs.endDate)}</p>
+                                      )}
+                                    </div>
+                                    {rs.description && (
+                                      <ul className="list-disc list-inside mt-1 space-y-0.5">
+                                        {bulletLines(rs.description).map((line, i) => (
+                                          <li key={i} className="text-[11px] leading-relaxed text-justify">{line}</li>
                                         ))}
                                       </ul>
                                     )}
@@ -2099,6 +2203,80 @@ export function ResumeBuilder() {
                       </div>
                     </SectionCard>
                   )
+                  if (sid === "research") return (
+                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={FlaskConical} color="bg-cyan-600">
+                      <div className="space-y-4">
+                        {(resume.research ?? []).length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">
+                            {resumeLang === "en" ? "No research yet. Add each research separately." : "Belum ada riset. Tambahkan tiap riset satu per satu."}
+                          </p>
+                        )}
+                        {(resume.research ?? []).map((rs) => (
+                          <Card key={rs.id} className="border-border/50">
+                            <CardContent className="pt-4">
+                              <div className="grid grid-cols-1 gap-4">
+                                <div className="space-y-2">
+                                  <Label>{resumeLang === "en" ? "Research Title" : "Judul Riset"}</Label>
+                                  <Input value={rs.title} onChange={(e) => updateResearch(rs.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Hate Speech Detection in Indonesian Tweets" : "cth. Deteksi Ujaran Kebencian di Tweet Indonesia"} />
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label>{resumeLang === "en" ? "Lab / Institution" : "Lab / Institusi"}</Label>
+                                    <Input value={rs.organization} onChange={(e) => updateResearch(rs.id, "organization", e.target.value)} placeholder={resumeLang === "en" ? "e.g. AI Lab" : "cth. Lab AI"} />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
+                                    <Input value={rs.location} onChange={(e) => updateResearch(rs.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
+                                    <Input type="month" value={rs.startDate} onChange={(e) => updateResearch(rs.id, "startDate", e.target.value)} />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
+                                    <div className="flex items-center gap-3">
+                                      <Input
+                                        type="month" value={rs.endDate}
+                                        onChange={(e) => updateResearch(rs.id, "endDate", e.target.value)}
+                                        disabled={rs.current}
+                                        className={rs.current ? "opacity-50" : ""}
+                                      />
+                                      <Label className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={rs.current}
+                                          onChange={(e) => updateResearch(rs.id, "current", e.target.checked)}
+                                          className="rounded"
+                                        />
+                                        {resumeLang === "en" ? "Ongoing" : "Masih berjalan"}
+                                      </Label>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>{resumeLang === "en" ? "Description (one bullet per line)" : "Deskripsi (satu bullet per baris)"}</Label>
+                                  <textarea
+                                    className="w-full min-h-[80px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                    placeholder={resumeLang === "en" ? "Contributions, methods, results — one per line..." : "Kontribusi, metode, hasil — satu per baris..."}
+                                    value={rs.description}
+                                    onChange={(e) => updateResearch(rs.id, "description", e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex justify-end mt-3">
+                                <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeResearch(rs.id)}>
+                                  <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                        <Button variant="outline" className="w-full gap-2" onClick={addResearch}>
+                          <Plus className="w-4 h-4" />{resumeLang === "en" ? "Add Research" : "Tambah Riset"}
+                        </Button>
+                      </div>
+                    </SectionCard>
+                  )
                   if (sid === "projects") return (
                     <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={FileText} color="bg-sky-500">
                       <div className="space-y-4">
@@ -2206,6 +2384,14 @@ export function ResumeBuilder() {
                                     <Input value={edu.gpa} onChange={(e) => updateEducation(edu.id, "gpa", e.target.value)} placeholder="3.50" />
                                   </div>
                                 )}
+                                <div className="space-y-2">
+                                  <Label>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
+                                  <Input type="month" value={edu.startDate} onChange={(e) => updateEducation(edu.id, "startDate", e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
+                                  <Input type="month" value={edu.endDate} onChange={(e) => updateEducation(edu.id, "endDate", e.target.value)} placeholder={resumeLang === "en" ? "Leave empty if ongoing" : "Kosongkan bila masih berjalan"} />
+                                </div>
                               </div>
                               {(edu.level ?? "univ") === "univ" && (
                                 <div className="space-y-3 mt-4 border-t border-border/50 pt-4">
@@ -2222,20 +2408,7 @@ export function ResumeBuilder() {
                                       onChange={(e) => updateEducation(edu.id, "thesisDescription", e.target.value)}
                                     />
                                   </div>
-                                  <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Research Experience (optional)" : "Penelitian Dosen / Research Assistant (opsional)"}</Label>
-                                    <Input value={edu.researchTitle ?? ""} onChange={(e) => updateEducation(edu.id, "researchTitle", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Research Assistant, NLP Lab" : "cth: Asisten Riset NLP, Lab AI Universitas"} />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Research Description (optional)" : "Deskripsi Kontribusi Riset (opsional)"}</Label>
-                                    <textarea
-                                      className="w-full min-h-[70px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
-                                      placeholder={resumeLang === "en" ? "Role and contributions: data collection, experiments, publications..." : "Peran dan kontribusi di penelitian: pengumpulan data, eksperimen, publikasi..."}
-                                      value={edu.researchDescription ?? ""}
-                                      onChange={(e) => updateEducation(edu.id, "researchDescription", e.target.value)}
-                                    />
-                                  </div>
-                                </div>
+</div>
                               )}
                               <div className="flex justify-end mt-3">
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeEducation(edu.id)}>

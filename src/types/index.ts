@@ -60,6 +60,17 @@ export interface ResumeOrganization {
   description: string
 }
 
+export interface ResumeResearch {
+  id: string
+  title: string
+  organization: string
+  location: string
+  startDate: string
+  endDate: string
+  current: boolean
+  description: string
+}
+
 export interface ResumeProject {
   id: string
   name: string
@@ -74,6 +85,7 @@ export interface ResumeData {
   experiences: ResumeExperience[]
   organizations: ResumeOrganization[]
   education: ResumeEducation[]
+  research: ResumeResearch[]
   skills: ResumeSkill[]
   skillGroups: ResumeSkillGroup[]
   projects: ResumeProject[]

@@ -697,6 +697,54 @@ export function normalizeResumeData(r: any): ResumeData {
     : legacySkills.length > 0
       ? [{ id: `sg_${Math.random().toString(36).slice(2, 8)}`, title: "", items: legacySkills.map((s) => s.name) }]
       : []
+  const education = toArray(r?.education).map((e: any) => ({
+    id: e?.id || `edu_${Math.random().toString(36).slice(2, 8)}`,
+    institution: String(e?.institution || ""),
+    degree: String(e?.degree || ""),
+    field: String(e?.field || ""),
+    startDate: String(e?.startDate || ""),
+    endDate: String(e?.endDate || ""),
+    gpa: String(e?.gpa || ""),
+    level: e?.level === "school" ? "school" : e?.level === "univ" ? "univ" : undefined,
+    thesisTitle: String(e?.thesisTitle || ""),
+    thesisDescription: String(e?.thesisDescription || ""),
+    researchTitle: String(e?.researchTitle || ""),
+    researchDescription: String(e?.researchDescription || ""),
+  }))
+  const research = toArray(r?.research).map((e: any) => {
+    const desc = Array.isArray(e?.description) ? e.description.join("\n") : (e?.description ? String(e.description) : "")
+    return {
+      id: e?.id || `rs_${Math.random().toString(36).slice(2, 8)}`,
+      title: String(e?.title || e?.name || ""),
+      organization: String(e?.organization || e?.institution || e?.lab || ""),
+      location: String(e?.location || ""),
+      startDate: String(e?.startDate || ""),
+      endDate: String(e?.endDate || ""),
+      current: e?.current ?? false,
+      description: desc,
+    }
+  })
+  // Migrasi sekali jalan: riset lama yang masih nempel di education dipindah
+  // ke section research mandiri lalu dikosongkan, agar tidak tampil ganda.
+  // Persist-nya ikut saat state yang sudah dinormalisasi disimpan kembali.
+  if (research.length === 0) {
+    for (const e of education) {
+      if (e.researchTitle.trim() || e.researchDescription.trim()) {
+        research.push({
+          id: `rs_${Math.random().toString(36).slice(2, 8)}`,
+          title: e.researchTitle.trim() || "Research",
+          organization: e.institution,
+          location: "",
+          startDate: e.startDate,
+          endDate: e.endDate,
+          current: false,
+          description: e.researchDescription,
+        })
+        e.researchTitle = ""
+        e.researchDescription = ""
+      }
+    }
+  }
   return {
     personalInfo: {
       fullName: String(p.fullName || r?.fullName || ""),
@@ -735,20 +783,8 @@ export function normalizeResumeData(r: any): ResumeData {
         description: desc,
       }
     }),
-    education: toArray(r?.education).map((e: any) => ({
-      id: e?.id || `edu_${Math.random().toString(36).slice(2, 8)}`,
-      institution: String(e?.institution || ""),
-      degree: String(e?.degree || ""),
-      field: String(e?.field || ""),
-      startDate: String(e?.startDate || ""),
-      endDate: String(e?.endDate || ""),
-      gpa: String(e?.gpa || ""),
-      level: e?.level === "school" ? "school" : e?.level === "univ" ? "univ" : undefined,
-      thesisTitle: String(e?.thesisTitle || ""),
-      thesisDescription: String(e?.thesisDescription || ""),
-      researchTitle: String(e?.researchTitle || ""),
-      researchDescription: String(e?.researchDescription || ""),
-    })),
+    education,
+    research,
     skills: legacySkills,
     skillGroups: skillGroupsFinal,
     projects: toArray(r?.projects).map((p: any) => {
@@ -1215,6 +1251,7 @@ function computeDeterministicAts(resume: ResumeData, jobPosting: JobPosting): Pa
     resume.summary,
     ...resume.experiences.flatMap((e) => [e.position, e.company, e.description]),
     ...(resume.organizations ?? []).flatMap((o) => [o.position, o.organization, o.description]),
+    ...(resume.research ?? []).flatMap((x) => [x.title, x.organization, x.description]),
     ...resume.education.map((e) => `${e.degree} ${e.field} ${e.institution} ${e.thesisTitle ?? ""} ${e.thesisDescription ?? ""} ${e.researchTitle ?? ""} ${e.researchDescription ?? ""}`),
     ...resume.skills.map((s) => s.name),
     ...(resume.skillGroups ?? []).flatMap((g) => [g.title, ...g.items]),
@@ -1308,7 +1345,7 @@ export async function optimizeResumeContent(resume: ResumeData, jobPosting: JobP
     : "Anda adalah PENYUSUN resume, bukan penulis ulang. Susun ulang dan sentuh ringan redaksi resume YANG SUDAH ADA agar cocok dengan lowongan. Kembalikan JSON. DILARANG: menambah/menghapus/mengubah fakta apa pun (perusahaan, posisi, tanggal, institusi, skill, proyek, awards). Yang boleh berubah hanya ringkasan, deskripsi item, dan URUTAN item. JANGAN mengarang data. Respond in INDONESIAN."
 
   const prompt = `Susun ulang (BUKAN tulis ulang) resume ini agar cocok dengan lowongan. Tugasmu menyusun, bukan mengarang:
-1. WAJIB pertahankan SEMUA entri asli: jumlah pengalaman, organisasi, pendidikan, proyek, skill, awards, bahasa harus SAMA PERSIS. Dilarang menambah atau menghapus entri.
+1. WAJIB pertahankan SEMUA entri asli: jumlah pengalaman, organisasi, pendidikan, riset, proyek, skill, awards, bahasa harus SAMA PERSIS. Dilarang menambah atau menghapus entri.
 2. DILARANG mengubah fakta: nama perusahaan, posisi, lokasi, tanggal, institusi, gelar, IPK, nama skill, nama proyek, URL, teknologi, awards, bahasa.
 3. Yang BOLEH: (a) ringkasan ditulis ulang menonjolkan relevansi dengan posisi; (b) deskripsi pengalaman/organisasi/proyek/thesis/riset diperbaiki redaksinya (grammar, action verbs, angka yang SUDAH ADA dipertahankan); (c) keyword lowongan disisipkan HANYA bila relevan dengan pekerjaan user yang sebenarnya; (d) URUTAN bullet/skill diubah sesuai prioritas kecocokan.
 4. Jika keyword lowongan tidak cocok dengan pengalaman user, JANGAN dipaksakan — biarkan apa adanya.
@@ -1363,6 +1400,17 @@ export function preserveOriginalFacts(original: ResumeData, optimized: ResumeDat
     ...(original.organizations ?? []).filter((o) => !(optimized.organizations ?? []).some((x) => x.id === o.id)),
   ]
 
+  const origRes = byId(original.research ?? [])
+  const research = [
+    ...(optimized.research ?? [])
+      .filter((x) => origRes.has(x.id))
+      .map((x) => {
+        const o = origRes.get(x.id)!
+        return { ...x, title: o.title, organization: o.organization, location: o.location, startDate: o.startDate, endDate: o.endDate, current: o.current }
+      }),
+    ...(original.research ?? []).filter((x) => !(optimized.research ?? []).some((y) => y.id === x.id)),
+  ]
+
   const origEdu = byId(original.education)
   const education = [
     ...optimized.education
@@ -1407,6 +1455,7 @@ export function preserveOriginalFacts(original: ResumeData, optimized: ResumeDat
     experiences,
     organizations,
     education,
+    research,
     skills: skills.length > 0 ? skills : original.skills,
     skillGroups: skillGroups.length > 0 ? skillGroups : original.skillGroups,
     projects,
@@ -1469,7 +1518,8 @@ Kembalikan JSON dengan struktur persis seperti ini:
   "summary": "3-4 sentence professional summary in English reflecting the ideal candidate for this position.",
   "experiences": [{ "id": "exp_1", "company": "Company Name", "position": "Job Title", "location": "Jakarta, Indonesia", "startDate": "2020-01", "endDate": "2023-12", "current": false, "description": "Led a team of 5 developers\nImproved system efficiency by 40%\nImplemented CI/CD pipeline reducing deploy time by 60%" }],
   "organizations": [{ "id": "org_1", "organization": "Organization Name", "position": "Role", "location": "Jakarta, Indonesia", "startDate": "2021-01", "endDate": "2022-12", "current": false, "description": "Coordinated 20 volunteers\nOrganized monthly tech meetups" }, { "id": "org_2", "organization": "Tech Community", "position": "Event Volunteer", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "", "current": true, "description": "Host monthly meetups\nOnboard new speakers" }],
-  "education": [{ "id": "edu_1", "institution": "University Name", "degree": "B.Sc.", "field": "Major", "startDate": "2015-08", "endDate": "2019-06", "gpa": "3.50", "level": "univ", "thesisTitle": "Thesis Title", "thesisDescription": "What was built\nHow it was evaluated\nKey result", "researchTitle": "Research Assistant, Lab Name", "researchDescription": "Contribution one\nContribution two" }, { "id": "edu_2", "institution": "High School Name", "degree": "", "field": "Science", "startDate": "2012-07", "endDate": "2015-06", "gpa": "", "level": "school", "thesisTitle": "", "thesisDescription": "", "researchTitle": "", "researchDescription": "" }],
+  "education": [{ "id": "edu_1", "institution": "University Name", "degree": "B.Sc.", "field": "Major", "startDate": "2015-08", "endDate": "2019-06", "gpa": "3.50", "level": "univ", "thesisTitle": "Thesis Title", "thesisDescription": "What was built\nHow it was evaluated\nKey result", "researchTitle": "", "researchDescription": "" }, { "id": "edu_2", "institution": "High School Name", "degree": "", "field": "Science", "startDate": "2012-07", "endDate": "2015-06", "gpa": "", "level": "school", "thesisTitle": "", "thesisDescription": "", "researchTitle": "", "researchDescription": "" }],
+  "research": [{ "id": "rs_1", "title": "Research Title", "organization": "Lab Name, University", "location": "Jakarta, Indonesia", "startDate": "2023-03", "endDate": "2023-12", "current": false, "description": "Contribution one\nContribution two with measured result" }, { "id": "rs_2", "title": "Second Research", "organization": "Lab Name", "location": "", "startDate": "2024-01", "endDate": "", "current": true, "description": "Ongoing contribution" }],
   "skillGroups": [{ "id": "sg_1", "title": "Programming Languages", "items": ["JavaScript", "TypeScript", "Python", "SQL"] }, { "id": "sg_2", "title": "Frontend", "items": ["React.js", "Next.js", "Tailwind CSS"] }, { "id": "sg_3", "title": "Backend & APIs", "items": ["Node.js", "RESTful API Development", "Microservices Architecture"] }, { "id": "sg_4", "title": "Databases", "items": ["PostgreSQL", "Redis"] }],
   "projects": [{ "id": "proj_1", "name": "Project Name", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-name", "technologies": ["Tech1", "Tech2"] }, { "id": "proj_2", "name": "Project Two", "description": "Achievement one\nAchievement two", "url": "https://github.com/example/project-two", "technologies": ["Tech3"] }],
   "awards": ["AWS Certified Cloud Practitioner", "Best Graduate 2020", "Exceeded quarterly team target by 15% in 2023"],
@@ -1493,7 +1543,7 @@ Benefits: ${toArray<string>(jobPosting.benefits).join(", ")}
 Education Requirements: ${toArray<string>(jobPosting.educationRequirements).join(", ")}
 
 Buat data resume yang menunjukkan kandidat ideal untuk posisi ini dengan pengalaman, pendidikan, dan skill yang relevan.
-Semua data boleh fiktif tapi harus realistis dan spesifik. ISI SEMUA FIELD, jangan ada yang kosong kecuali foto: 3 pengalaman kerja (deskripsi bullet, tiap baris = 1 pencapaian terukur), 2 pengalaman organisasi, 2 pendidikan (1 universitas lengkap dengan thesis + research multi-bullet, 1 SMA level school), 4-5 skillGroups berkategori spesifik (cth. Programming Languages, Frontend, Backend & APIs, Databases — tiap grup 3-7 items), 3 proyek (deskripsi bullet + url github dummy + technologies terisi), 3-4 awards, dan 2-3 bahasa. Kosongkan hanya photo (wajah milik user, tidak boleh difabrikasi). Buat SELENGKAP mungkin agar user melihat versi paling penuh.
+Semua data boleh fiktif tapi harus realistis dan spesifik. ISI SEMUA FIELD, jangan ada yang kosong kecuali foto: 3 pengalaman kerja (deskripsi bullet, tiap baris = 1 pencapaian terukur), 2 pengalaman organisasi, 2 pendidikan (1 universitas lengkap dengan thesis multi-bullet, 1 SMA level school), 2 riset mandiri (judul + deskripsi bullet ber-angka), 4-5 skillGroups berkategori spesifik (cth. Programming Languages, Frontend, Backend & APIs, Databases — tiap grup 3-7 items), 3 proyek (deskripsi bullet + url github dummy + technologies terisi), 3-4 awards, dan 2-3 bahasa. Kosongkan hanya photo (wajah milik user, tidak boleh difabrikasi). Buat SELENGKAP mungkin agar user melihat versi paling penuh.
 GAYA BAHASA WAJIB KUANTITATIF DAN MEMBUKTIKAN: setiap bullet pengalaman, organisasi, proyek, dan ringkasan harus memuat angka konkret (jumlah, persen, waktu, skala) yang membuktikan dampak, cth. "Cut page load time by 45%", "Mentored 3 juniors", "serving 50k daily events". DILARANG kalimat generik tanpa angka seperti "responsible for", "helped with", "worked on".`
 
   const parsed = await extractJsonFromLLM<Partial<ResumeData>>(prompt, systemPrompt, config)
@@ -1513,6 +1563,7 @@ Kembalikan JSON valid SAJA tanpa markdown, dengan struktur:
   "experiences": [{ "id": "exp_1", "company": "", "position": "", "location": "", "startDate": "", "endDate": "", "current": false, "description": "" }],
   "organizations": [{ "id": "org_1", "organization": "", "position": "", "location": "", "startDate": "", "endDate": "", "current": false, "description": "" }],
   "education": [{ "id": "edu_1", "institution": "", "degree": "", "field": "", "startDate": "", "endDate": "", "gpa": "", "thesisTitle": "", "thesisDescription": "", "researchTitle": "", "researchDescription": "" }],
+  "research": [{ "id": "rs_1", "title": "", "organization": "", "location": "", "startDate": "", "endDate": "", "current": false, "description": "" }],
   "skillGroups": [{ "id": "sg_1", "title": "", "items": [] }],
   "projects": [{ "id": "proj_1", "name": "", "description": "", "url": "", "technologies": [] }],
   "awards": [],
@@ -1526,7 +1577,7 @@ Buat ID unik untuk setiap item (exp_1, org_1, edu_1, sg_1, dll).`
   const prompt = `Ekstrak informasi resume dari teks berikut ke dalam format JSON terstruktur:
 ${cvText.slice(0, 20000)}
 
-Ekstrak semua informasi yang tersedia: nama, kontak, ringkasan, pengalaman kerja/profesional, pengalaman organisasi, pendidikan (termasuk judul dan deskripsi skripsi/tugas akhir serta pengalaman riset/asisten penelitian bila ada), skill (kelompokkan per kategori bila ada), proyek, awards/sertifikasi/pencapaian, bahasa.
+Ekstrak semua informasi yang tersedia: nama, kontak, ringkasan, pengalaman kerja/profesional, pengalaman organisasi, pendidikan (termasuk judul dan deskripsi skripsi/tugas akhir bila ada), riset/penelitian (tiap riset terpisah: judul, lab/institusi, periode, deskripsi), skill (kelompokkan per kategori bila ada), proyek, awards/sertifikasi/pencapaian, bahasa.
 Jika tanggal tidak lengkap, gunakan format YYYY-MM atau YYYY.`
 
   const parsed = await extractJsonFromLLM<Partial<ResumeData>>(prompt, systemPrompt, config)
