@@ -6,7 +6,7 @@ import {
   FileText, Plus, Trash2, Download, Sparkles, Loader2, Eye, Edit3,
   ChevronDown, ChevronUp, User, Users, Briefcase, GraduationCap, Wrench,
   Globe, Award, Languages, CheckCircle2, AlertCircle, Upload, Wand2,
-  EyeOff, RotateCcw, ArrowUp, ArrowDown,
+  EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -290,11 +290,71 @@ export function ResumeBuilder() {
   const [pageMode, setPageMode] = useState<1 | 2>(1)
   const [contentH, setContentH] = useState(0)
   const previewRef = useRef<HTMLDivElement>(null)
+  const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
+  const [preGenerate, setPreGenerate] = useState<ResumeData | null>(null)
+  const [showSupportPrompt, setShowSupportPrompt] = useState(false)
+
+  const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
+
+  const togglePreview = () => {
+    setPreview((p) => !p)
+    requestAnimationFrame(() => {
+      document.getElementById("builder")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+  }
+
+  // Generate bersifat destruktif (replace seluruh isi) → minta konfirmasi
+  // bila sudah ada data, plus backup otomatis + tombol urungkan.
+  const requestGenerate = () => {
+    if (generatingSample) return
+    if (isResumeEmpty) {
+      handleGenerateSample()
+      return
+    }
+    setShowGenerateConfirm(true)
+  }
+
+  const confirmGenerate = () => {
+    try {
+      safeLocalSet("resume_data_before_generate", JSON.stringify(resume))
+    } catch {}
+    setPreGenerate(resume)
+    setShowGenerateConfirm(false)
+    handleGenerateSample()
+  }
+
+  const undoGenerate = () => {
+    const backup = preGenerate ?? (() => {
+      try {
+        const raw = safeLocalGet("resume_data_before_generate")
+        return raw ? normalizeResumeData(JSON.parse(raw)) : null
+      } catch {
+        return null
+      }
+    })()
+    if (!backup) {
+      showToast("Tidak ada backup untuk dikembalikan", "error")
+      return
+    }
+    setResume(normalizeResumeData(backup))
+    setPreGenerate(null)
+    try { safeLocalSet("resume_data_before_generate", "") } catch {}
+    showToast(resumeLang === "en" ? "Restored data before generate" : "Data sebelum generate dikembalikan")
+  }
 
   useEffect(() => {
     const stored = safeLocalGet("resume_data")
     if (stored) {
       try { setResume(normalizeResumeData(JSON.parse(stored))) } catch {}
+    }
+    const backup = safeLocalGet("resume_data_before_generate")
+    if (backup) {
+      try {
+        const parsed = normalizeResumeData(JSON.parse(backup))
+        if (parsed.personalInfo.fullName || parsed.summary || parsed.experiences.length > 0) {
+          setPreGenerate(parsed)
+        }
+      } catch {}
     }
     const storedLang = safeLocalGet("resume_lang")
     if (storedLang === "id" || storedLang === "en") setResumeLang(storedLang)
@@ -709,6 +769,108 @@ export function ResumeBuilder() {
         </div>
       )}
 
+      {showGenerateConfirm && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setShowGenerateConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowGenerateConfirm(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Batal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/40 text-amber-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">
+                  {resumeLang === "en" ? "Replace entire CV?" : "Ganti seluruh isi CV?"}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  {resumeLang === "en"
+                    ? "Generate will overwrite everything you filled in. Your current data is backed up automatically and can be undone."
+                    : "Generate akan menimpa semua data yang sudah kamu isi. Data saat ini dibackup otomatis dan bisa diurungkan."}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <Button variant="outline" className="flex-1" onClick={() => setShowGenerateConfirm(false)}>
+                {resumeLang === "en" ? "Cancel" : "Batal"}
+              </Button>
+              <Button className="flex-1 gap-2" onClick={confirmGenerate} disabled={generatingSample}>
+                <Wand2 className="w-4 h-4" />
+                {resumeLang === "en" ? "Generate & Replace" : "Generate & Ganti"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSupportPrompt && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setShowSupportPrompt(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowSupportPrompt(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Tutup"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex justify-center mb-3">
+              <div className="p-3 rounded-2xl bg-primary/10 text-primary">
+                <Heart className="w-6 h-6" />
+              </div>
+            </div>
+            <h3 className="font-bold text-lg">
+              {resumeLang === "en" ? "Like the result?" : "Suka hasilnya?"}
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+              {resumeLang === "en"
+                ? "LolosCV is free. A small donation keeps the servers running — totally optional."
+                : "LolosCV gratis. Donasi kecil bikin server tetap jalan — sepenuhnya opsional."}
+            </p>
+            <div className="flex flex-col gap-2 mt-5">
+              <Button
+                className="w-full gap-2"
+                onClick={() => {
+                  window.open(SAWERIA_URL, "_blank", "noopener,noreferrer")
+                  setShowSupportPrompt(false)
+                  handleDownloadPdf()
+                }}
+              >
+                <Heart className="w-4 h-4" />
+                {resumeLang === "en" ? "Donate via Saweria" : "Donasi via Saweria"}
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setShowSupportPrompt(false)
+                  handleDownloadPdf()
+                }}
+                disabled={exportingPdf}
+              >
+                {resumeLang === "en" ? "Skip, download directly" : "Lewati, langsung download"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
       <div className="container relative">
         <div className="text-center mb-10">
@@ -730,10 +892,11 @@ export function ResumeBuilder() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
+            <div className="sticky top-16 z-30 -mx-1 px-1 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 rounded-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">{preview ? "Preview CV" : "Edit CV"}</h3>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPreview(!preview)} className="gap-2">
+                <Button variant="outline" size="sm" onClick={togglePreview} className="gap-2">
                   {preview ? <Edit3 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   {preview ? "Edit" : "Preview"}
                 </Button>
@@ -780,6 +943,7 @@ export function ResumeBuilder() {
                 </div>
               </div>
             </div>
+            </div>
 
             {showImportTools && (
               <Card className="border-border/50 border-primary/20">
@@ -812,7 +976,7 @@ export function ResumeBuilder() {
                         Punya CV lama? Impor PDF-nya, atau isi satu per satu.
                       </p>
                       <div className="flex flex-wrap gap-2 mt-4">
-                        <Button onClick={handleGenerateSample} disabled={generatingSample} className="gap-2">
+                        <Button onClick={requestGenerate} disabled={generatingSample} className="gap-2">
                           {generatingSample ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                           {generatingSample ? "Membuat..." : "Generate Sample CV"}
                         </Button>
@@ -2064,7 +2228,7 @@ export function ResumeBuilder() {
                   <CardDescription>Buat CV otomatis dari lowongan yang sudah dianalisis</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button variant="outline" className="w-full gap-2 text-sm border-primary/40" onClick={handleGenerateSample} disabled={generatingSample}>
+                  <Button variant="outline" className="w-full gap-2 text-sm border-primary/40" onClick={requestGenerate} disabled={generatingSample}>
                     {generatingSample ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                     {generatingSample ? "Membuat..." : "Generate Sample CV"}
                   </Button>
@@ -2072,6 +2236,12 @@ export function ResumeBuilder() {
                     <Upload className="w-4 h-4" />
                     {showImportTools ? "Tutup Import CV" : "Import dari CV"}
                   </Button>
+                  {preGenerate && (
+                    <Button variant="ghost" className="w-full gap-2 text-sm text-muted-foreground hover:text-foreground" onClick={undoGenerate}>
+                      <RotateCcw className="w-4 h-4" />
+                      {resumeLang === "en" ? "Undo last generate" : "Urungkan generate terakhir"}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
 
@@ -2235,7 +2405,7 @@ export function ResumeBuilder() {
                   <CardDescription>{pageMode === 1 ? "Download PDF 1 halaman (dipadatkan otomatis)" : "Download PDF alur normal (bisa 2 halaman)"}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full gap-2" size="lg" onClick={handleDownloadPdf} disabled={exportingPdf}>
+                  <Button className="w-full gap-2" size="lg" onClick={() => setShowSupportPrompt(true)} disabled={exportingPdf}>
                     {exportingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                     {exportingPdf ? "Menyiapkan PDF..." : "Download PDF"}
                   </Button>
