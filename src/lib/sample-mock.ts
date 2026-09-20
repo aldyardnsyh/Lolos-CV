@@ -3,10 +3,10 @@
 import type { JobPosting, ResumeData } from "@/types"
 
 const GENERIC_BULLETS = [
-  "Completed assigned tasks on time with consistent quality",
-  "Collaborated with cross-functional team members to reach quarterly targets",
-  "Identified process bottlenecks and proposed practical improvements",
-  "Maintained clear documentation for handover and reporting",
+  "Delivered 20+ tasks per quarter with 98% on-time rate",
+  "Collaborated with a 6-person cross-functional team to exceed quarterly targets by 12%",
+  "Cut manual reporting effort by 50% through process improvements",
+  "Maintained documentation covering 30+ workflows for handover and audits",
 ]
 
 // Grup skill default yang kaya — mencontohkan versi selengkap-lengkapnya:
