@@ -26,6 +26,31 @@ export type Donation = {
 export const MAX_NAME_LENGTH = 40
 export const MAX_AMOUNT = 10_000_000
 
+// Fail-closed: di production, fungsi admin MATI TOTAL bila ADMIN_TOKEN
+// tidak diset (mencegah verifikasi/hapus donasi oleh orang asing).
+// Di dev lokal, fallback default memudahkan uji alur manual.
+export const ADMIN_TOKEN =
+  process.env.ADMIN_TOKEN || (process.env.NODE_ENV === "production" ? "" : "admin-loloscv")
+
+export function isAdminAuthorized(token: string): boolean {
+  if (!ADMIN_TOKEN) return false
+  return token === ADMIN_TOKEN
+}
+
+// Batas anti-bloat: spammer tidak bisa menggembungkan storage tanpa batas.
+// Saat penuh, buang pending terlama dulu; verified hanya terbuang bila
+// tidak ada pending tersisa (kondisi ekstrem, tercatat di bawah).
+export const MAX_STORED_DONATIONS = 1000
+
+export function pruneDonations(list: Donation[]): Donation[] {
+  while (list.length > MAX_STORED_DONATIONS) {
+    const pendIdx = list.findIndex((d) => d.status === "pending")
+    if (pendIdx !== -1) list.splice(pendIdx, 1)
+    else list.shift()
+  }
+  return list
+}
+
 const MEMORY_STORE: Donation[] = []
 
 async function getClient(): Promise<import("@vercel/kv").VercelKV | null> {

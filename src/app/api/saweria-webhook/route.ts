@@ -4,6 +4,7 @@ import {
   listDonations,
   saveDonations,
   sanitizeName,
+  pruneDonations,
   MAX_AMOUNT,
 } from "@/lib/donations-store"
 
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
     saweriaId: saweriaId || undefined,
     message: message || undefined,
   })
-  await saveDonations(donations)
+  await saveDonations(pruneDonations(donations))
 
   return NextResponse.json({ ok: true, name, amount })
 }

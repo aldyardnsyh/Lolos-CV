@@ -3,6 +3,8 @@ import {
   listDonations,
   saveDonations,
   sanitizeName,
+  isAdminAuthorized,
+  pruneDonations,
   MAX_AMOUNT,
 } from "@/lib/donations-store"
 import { clientIp, rateLimit } from "@/lib/rate-limit"
@@ -10,17 +12,6 @@ import { clientIp, rateLimit } from "@/lib/rate-limit"
 // Leaderboard donasi — terisi OTOMATIS dari webhook Saweria
 // (/api/saweria-webhook, status "verified") + form manual (status "pending"
 // sampai diverifikasi admin). Peringkat diagregasi per nama donatur.
-
-// Fail-closed: di production, endpoint admin MATI TOTAL bila ADMIN_TOKEN
-// tidak diset (mencegah verifikasi donasi palsu dengan token default).
-// Di dev lokal, fallback default memudahkan uji alur manual.
-const ADMIN_TOKEN =
-  process.env.ADMIN_TOKEN || (process.env.NODE_ENV === "production" ? "" : "admin-loloscv")
-
-function isAdminAuthorized(token: string): boolean {
-  if (!ADMIN_TOKEN) return false
-  return token === ADMIN_TOKEN
-}
 
 // GET /api/donations — leaderboard top 10 (agregasi total per donatur)
 // GET /api/donations?admin=true&token=xxx — semua pending
@@ -39,9 +30,11 @@ export async function GET(request: NextRequest) {
 
     const verified = donations.filter((d) => d.status === "verified")
 
-    // Agregasi: satu nama = satu peringkat (total semua donasinya)
+    // Agregasi: satu nama = satu peringkat (total semua donasinya).
+    // Nominal 0 tidak ikut peringkat maupun total (noise).
     const byDonor = new Map<string, { name: string; amount: number; id: string; count: number }>()
     for (const d of verified) {
+      if (!(d.amount > 0)) continue
       const key = d.name.trim().toLowerCase()
       if (!key) continue
       const cur = byDonor.get(key)
@@ -61,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       donors,
-      total: verified.reduce((s, d) => s + d.amount, 0),
+      total: verified.reduce((s, d) => s + (d.amount > 0 ? d.amount : 0), 0),
     })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Gagal memuat data" }, { status: 500 })
@@ -119,10 +112,34 @@ export async function POST(request: NextRequest) {
       source: "manual" as const,
     }
     donations.push(donation)
-    await saveDonations(donations)
+    await saveDonations(pruneDonations(donations))
 
     return NextResponse.json({ ok: true, id: donation.id, name: donation.name })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Gagal menyimpan" }, { status: 500 })
+  }
+}
+
+// DELETE /api/donations?token=xxx — hapus satu entri (moderasi nama iseng /
+// ofensif di leaderboard publik). Body: { id }
+export async function DELETE(request: NextRequest) {
+  try {
+    const token = request.nextUrl.searchParams.get("token") || ""
+    if (!isAdminAuthorized(token)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    const body = await request.json().catch(() => ({}))
+    const id = typeof body?.id === "string" ? body.id.trim() : ""
+    if (!id) return NextResponse.json({ error: "ID wajib diisi" }, { status: 400 })
+
+    const donations = await listDonations()
+    const idx = donations.findIndex((d) => d.id === id)
+    if (idx === -1) return NextResponse.json({ error: "Donasi tidak ditemukan" }, { status: 404 })
+
+    const [removed] = donations.splice(idx, 1)
+    await saveDonations(donations)
+    return NextResponse.json({ ok: true, name: removed.name })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Gagal menghapus" }, { status: 500 })
   }
 }
