@@ -155,8 +155,23 @@ export async function fetchAvailableModels(config: ApiConfig): Promise<ProviderM
       data = await directFetchJson(url, headers, null, "GET", config.provider)
     } catch (directErr: any) {
       if (typeof directErr?.httpStatus === "number") throw directErr
-      // Fall through ke proxy di bawah
-      data = undefined as any
+      // Browser terblokir (server mati/CORS) → coba proxy (berhasil bila
+      // dev server jalan di mesin yang sama). Kalau proxy ikut gagal,
+      // sampaikan diagnosis lokal, bukan "Proxy error" generik.
+      try {
+        const proxyRes = await fetch("/api/proxy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, headers, body: null, method: "GET" }),
+          signal: AbortSignal.timeout(30_000),
+        })
+        if (!proxyRes.ok) throw new Error(`Proxy error: ${proxyRes.status}`)
+        const result = await proxyRes.json()
+        if (result.status >= 400) throw new Error(`API Error (${config.provider}): ${result.status} - ${JSON.stringify(result.data)}`)
+        data = result.data
+      } catch {
+        throw localUnreachableError(url)
+      }
     }
   }
   if (data === undefined) {
@@ -239,6 +254,22 @@ function isLocalAppHost(): boolean {
   if (typeof window === "undefined") return true
   const h = window.location.hostname.toLowerCase()
   return h === "localhost" || h === "127.0.0.1" || h === "::1"
+}
+
+// Browser sengaja tidak membedakan "server mati" vs "diblokir CORS"
+// (keduanya TypeError generik). Pesan ini memberi tes diskriminan yang
+// bisa dilakukan user dalam 10 detik: buka origin server langsung di
+// address bar (tidak kena CORS) — tampil = server hidup = masalahnya CORS,
+// tidak tampil = servernya memang belum jalan.
+function localUnreachableError(url: string): Error {
+  let origin = ""
+  try { origin = new URL(url).origin } catch {}
+  return new Error(
+    "Server lokal tidak terjangkau dari browser." +
+    (origin ? ` Tes cepat: buka ${origin} langsung di address bar — kalau tidak tampil, servernya belum jalan.` : "") +
+    " Kalau terbuka tapi app tetap gagal, berarti browser diblokir CORS: aktifkan CORS di 9Router/Ollama" +
+    (!isLocalAppHost() ? " (wajib aktif karena app dibuka dari versi deploy, bukan localhost)" : "") + "."
+  )
 }
 
 const hostOf = (u: string) => { try { return new URL(u).host } catch { return u } }
@@ -351,11 +382,7 @@ async function fetchAIResponse(
         try {
           return await proxyFetch(url, headers, body, provider)
         } catch {
-          throw new Error(
-            "Server lokal tidak terjangkau. Pastikan server (Ollama / 9Router / LM Studio) sedang berjalan di perangkat ini" +
-            (!isLocalAppHost() ? " dan mengizinkan akses browser (CORS), mis. OLLAMA_ORIGINS=* ollama serve" : "") +
-            "."
-          )
+          throw localUnreachableError(url)
         }
       }
     }
