@@ -264,7 +264,14 @@ function SectionCard({
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
-      {open && <CardContent className="pt-2 pb-4">{children}</CardContent>}
+      <div className={cn(
+        "grid transition-all duration-300 ease-in-out",
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+      )}>
+        <div className="overflow-hidden">
+          <CardContent className="pt-2 pb-4">{children}</CardContent>
+        </div>
+      </div>
     </Card>
   )
 }
@@ -288,7 +295,7 @@ export function ResumeBuilder() {
   const [accentIdx, setAccentIdx] = useState(0)
   const [sectionOrder, setSectionOrder] = useState<ResumeSectionId[]>(DEFAULT_SECTION_ORDER)
   const [hiddenSections, setHiddenSections] = useState<ResumeSectionId[]>([])
-  const [pageMode, setPageMode] = useState<1 | 2>(1)
+  const [compactOnePage, setCompactOnePage] = useState(true)
   const [contentH, setContentH] = useState(0)
   const previewRef = useRef<HTMLDivElement>(null)
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
@@ -374,7 +381,11 @@ export function ResumeBuilder() {
         if (l && typeof l === "object") {
           setSectionOrder(normalizeSectionOrder((l as { order?: unknown }).order))
           setHiddenSections(normalizeHiddenSections((l as { hidden?: unknown }).hidden))
-          if ((l as { pages?: unknown }).pages === 2) setPageMode(2)
+          if (typeof (l as { compact?: unknown }).compact === "boolean") {
+            setCompactOnePage((l as { compact: boolean }).compact)
+          } else if ((l as { pages?: unknown }).pages === 2) {
+            setCompactOnePage(false) // migrasi preferensi lama
+          }
         }
       } catch {}
     }
@@ -406,18 +417,20 @@ export function ResumeBuilder() {
   }, [cvFont, cvSize, accentIdx])
 
   useEffect(() => {
-    safeLocalSet("resume_layout", JSON.stringify({ order: sectionOrder, hidden: hiddenSections, pages: pageMode }))
-  }, [sectionOrder, hiddenSections, pageMode])
+    safeLocalSet("resume_layout", JSON.stringify({ order: sectionOrder, hidden: hiddenSections, compact: compactOnePage }))
+  }, [sectionOrder, hiddenSections, compactOnePage])
 
-  // Ukur tinggi konten TANPA zoom (hanya untuk indikator overflow & garis batas halaman).
-  // Preview tidak di-zoom sama sekali: ukuran font diatur via CSS var --cv-scale
-  // di .cv-paper (lihat globals.css), layout/kertas tetap 210mm.
+  // Ukur tinggi KERTAS (.cv-paper) tanpa zoom — untuk estimasi jumlah halaman.
+  // (Dulu mengukur container luar yang mencakup padding + banner, sehingga
+  // estimasi melar dan muncul garis "Halaman 3" hantu.) Preview tidak di-zoom:
+  // ukuran font diatur via CSS var --cv-scale di .cv-paper.
   useEffect(() => {
     if (!preview) return
     const measure = () => {
-      const el = previewRef.current
-      if (!el) return
-      const h = el.scrollHeight
+      const root = previewRef.current
+      if (!root) return
+      const paper = root.querySelector(".cv-paper") as HTMLElement | null
+      const h = (paper ?? root).scrollHeight
       if (!h || !Number.isFinite(h)) return
       setContentH((prev) => (prev === Math.round(h) ? prev : Math.round(h)))
     }
@@ -429,7 +442,12 @@ export function ResumeBuilder() {
       cancelled = true
       window.removeEventListener("resize", measure)
     }
-  }, [preview, pageMode, resume, selectedTemplate, cvFont, cvSize, accentIdx, sectionOrder, hiddenSections, resumeLang])
+  }, [preview, resume, selectedTemplate, cvFont, cvSize, accentIdx, sectionOrder, hiddenSections, resumeLang])
+
+  const estPages = contentH > 0 ? Math.max(1, Math.ceil(contentH / A4_CONTENT_PX)) : 1
+  const compactPct = contentH > A4_CONTENT_PX
+    ? Math.max(50, Math.round((A4_CONTENT_PX / contentH) * 100))
+    : 100
 
   const orderOf = (id: ResumeSectionId) => {
     const i = sectionOrder.indexOf(id)
@@ -728,7 +746,7 @@ export function ResumeBuilder() {
 
       // Small delay for render
       await new Promise((r) => setTimeout(r, 150))
-      if (pageMode === 1) {
+      if (compactOnePage) {
         try {
           const paper = clone.querySelector(".cv-paper") as HTMLElement | null
           const h = paper ? paper.scrollHeight : clone.scrollHeight
@@ -760,7 +778,7 @@ export function ResumeBuilder() {
   return (
     <section id="builder" className="py-24 relative">
       {toast.show && (
-        <div className="fixed top-20 right-4 z-[100] flex items-start gap-3 pl-3 pr-5 py-3 rounded-2xl shadow-2xl border border-border bg-card text-card-foreground max-w-sm animate-in fade-in slide-in-from-right-4 duration-300">
+        <div className="fixed top-20 right-4 z-[100] flex items-start gap-3 pl-3 pr-5 py-3 rounded-2xl shadow-2xl border border-border bg-card text-card-foreground max-w-sm animate-[toast-in_.3s_ease-out]">
           <div className={cn(
             "p-2 rounded-xl text-white shrink-0 shadow",
             toast.type === "success" ? "bg-emerald-500" : "bg-red-500"
@@ -780,11 +798,11 @@ export function ResumeBuilder() {
 
       {showGenerateConfirm && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
           onClick={() => setShowGenerateConfirm(false)}
         >
           <div
-            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6"
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 animate-[modal-in_.25s_ease-out]"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -824,7 +842,7 @@ export function ResumeBuilder() {
 
       {showSupportPrompt && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
           onClick={() => setShowSupportPrompt(false)}
         >
           <div
@@ -908,21 +926,6 @@ export function ResumeBuilder() {
                   {preview ? <Edit3 className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   {preview ? "Edit" : "Preview"}
                 </Button>
-                <div className="flex items-center gap-1 rounded-lg border p-1 bg-background" title="Jumlah halaman CV">
-                  {([1, 2] as const).map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setPageMode(n)}
-                      className={cn(
-                        "px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
-                        pageMode === n ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                      )}
-                      title={n === 1 ? "Padatkan agar pas 1 halaman" : "Alur normal, bisa 2 halaman"}
-                    >
-                      {n} hlm
-                    </button>
-                  ))}
-                </div>
                 <div className="flex items-center gap-1 rounded-lg border p-1 bg-background">
                   <button
                     onClick={() => handleToggleLanguage("id")}
@@ -1069,28 +1072,16 @@ export function ResumeBuilder() {
                   id="resume-preview-content"
                   style={{ fontFamily: FONT_STACKS[cvFont] } as React.CSSProperties}
                 >
-                  {preview && pageMode === 1 && contentH > A4_CONTENT_PX && (
+                  {preview && contentH > A4_CONTENT_PX && (
                     <p className="text-center text-[10px] text-muted-foreground mb-2 print:hidden">
-                      {resumeLang === "en"
-                        ? "Content exceeds 1 page — switch to 2 pages or use a smaller font size"
-                        : "Konten melebihi 1 halaman — pilih 2 halaman atau kecilkan ukuran font"}
+                      {compactOnePage
+                        ? (resumeLang === "en"
+                          ? `About ${estPages} pages — will be compacted to ${compactPct}% on download`
+                          : `Sekitar ${estPages} halaman — otomatis dipadatkan ${compactPct}% saat download`)
+                        : (resumeLang === "en"
+                          ? `About ${estPages} pages — downloads as ${estPages} pages`
+                          : `Sekitar ${estPages} halaman — terdownload ${estPages} halaman`)}
                     </p>
-                  )}
-                  {preview && pageMode === 2 && contentH > A4_CONTENT_PX && (
-                    Array.from({ length: Math.floor(contentH / A4_CONTENT_PX) }, (_, i) => {
-                      const top = (i + 1) * A4_CONTENT_PX
-                      return (
-                        <div
-                          key={`pagebreak-${i}`}
-                          className="pointer-events-none absolute left-0 right-0 border-t-2 border-dashed border-primary/60 print:hidden"
-                          style={{ top }}
-                        >
-                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground shadow">
-                            Halaman {i + 2}
-                          </span>
-                        </div>
-                      )
-                    })
                   )}
                   {/* ATS CLASSIC - single column, black & white, bullet points */}
                   {selectedTemplate === "corporate" && (
@@ -2385,13 +2376,42 @@ export function ResumeBuilder() {
               <Card className="border-border/50 mt-4">
                 <CardHeader>
                   <CardTitle className="text-sm">Export</CardTitle>
-                  <CardDescription>{pageMode === 1 ? "Download PDF 1 halaman (dipadatkan otomatis)" : "Download PDF alur normal (bisa 2 halaman)"}</CardDescription>
+                  <CardDescription>
+                    {resumeLang === "en" ? "Download PDF of your resume" : "Download PDF resume kamu"}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Button className="w-full gap-2" size="lg" onClick={() => setShowSupportPrompt(true)} disabled={exportingPdf}>
                     {exportingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                     {exportingPdf ? "Menyiapkan PDF..." : "Download PDF"}
                   </Button>
+                  <button
+                    onClick={() => setCompactOnePage((v) => !v)}
+                    aria-pressed={compactOnePage}
+                    className="w-full flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2.5 text-left transition-colors hover:border-primary/50"
+                  >
+                    <span>
+                      <span className="block text-xs font-semibold">
+                        {resumeLang === "en" ? "Fit into 1 page" : "Padatkan ke 1 halaman"}
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground mt-0.5">
+                        {contentH > A4_CONTENT_PX
+                          ? (resumeLang === "en"
+                            ? `Content ≈ ${estPages} pages${compactOnePage ? ` → compacted to ${compactPct}%` : " → downloads as-is"}`
+                            : `Konten ≈ ${estPages} halaman${compactOnePage ? ` → dipadatkan ${compactPct}%` : " → terdownload apa adanya"}`)
+                          : (resumeLang === "en" ? "Content fits 1 page" : "Konten muat 1 halaman")}
+                      </span>
+                    </span>
+                    <span className={cn(
+                      "relative w-9 h-5 rounded-full transition-colors shrink-0",
+                      compactOnePage ? "bg-primary" : "bg-muted"
+                    )}>
+                      <span className={cn(
+                        "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all",
+                        compactOnePage ? "left-[18px]" : "left-0.5"
+                      )} />
+                    </span>
+                  </button>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">Bahasa Resume</span>
                     <div className="flex items-center gap-1 rounded-lg border p-1">
