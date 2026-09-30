@@ -16,7 +16,7 @@ const poppins = Poppins({
   display: "swap",
 })
 
-// Structured data (invisible, SEO only — tidak mengubah tampilan/fungsi).
+// Structured data (invisible, SEO only. Tidak mengubah tampilan/fungsi).
 const softwareAppJsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -26,7 +26,7 @@ const softwareAppJsonLd = {
   operatingSystem: "Web",
   inLanguage: ["id", "en"],
   description:
-    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF — gratis tanpa batas.",
+    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF. Gratis tanpa batas.",
   offers: { "@type": "Offer", price: "0", priceCurrency: "IDR" },
 }
 
@@ -91,7 +91,7 @@ export const metadata: Metadata = {
     template: "%s | LolosCV",
   },
   description:
-    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF — gratis tanpa batas.",
+    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF. Gratis tanpa batas.",
   keywords: [
     "pembuat cv", "buat cv online", "cv builder indonesia", "cv ATS",
     "ATS friendly", "CV online gratis", "resume builder", "contoh CV ATS",
