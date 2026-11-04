@@ -2,6 +2,12 @@ import type { ApiProvider, ATSAnalysis, JobPosting, JobStream, ProviderModel, Re
 import { PROVIDERS } from "@/types"
 import { buildExclusionTerms, sanitizeKeywordList } from "@/lib/keywords"
 
+// Kontrak lintas-agent: pesan error saat API belum diset. JANGAN ubah prefix
+// "API belum dikonfigurasi" — UI Builder mendeteksinya untuk menampilkan
+// panduan onboarding (atur API key atau pakai mode demo).
+export const API_NOT_CONFIGURED_ERROR =
+  "API belum dikonfigurasi. Atur API Key di bagian Konfigurasi API, atau pakai mode demo (Generate Sample CV) tanpa API Key."
+
 export interface ApiConfig {
   apiKey: string
   model: string
@@ -18,10 +24,27 @@ export function safeLocalGet(key: string): string | null {
   }
 }
 
-export function safeLocalSet(key: string, value: string): void {
+const warnedLocalSetKeys = new Set<string>()
+
+// Return true = tersimpan, false = gagal (mis. QuotaExceededError saat kuota
+// localStorage penuh). Tetap tidak melempar agar pemanggil lama yang
+// mengabaikan return tetap aman — tapi kegagalan tidak lagi ditelan senyap.
+export function safeLocalSet(key: string, value: string): boolean {
   try {
     window.localStorage.setItem(key, value)
-  } catch {}
+    return true
+  } catch (e) {
+    // Warn sekali per key: autosave menulis tiap ketikan, jangan banjir console.
+    if (!warnedLocalSetKeys.has(key)) {
+      warnedLocalSetKeys.add(key)
+      console.warn(
+        `[localStorage] Gagal menyimpan "${key}" (${(e as Error)?.name || "Error"}): ` +
+        `kemungkinan kuota penyimpanan browser penuh. Data terbaru TIDAK tersimpan.`,
+        e,
+      )
+    }
+    return false
+  }
 }
 
 export function safeLocalRemove(key: string): void {
@@ -214,7 +237,8 @@ export async function fetchAvailableModels(config: ApiConfig): Promise<ProviderM
     }))
 }
 
-const LLM_TIMEOUT_MS = 180_000
+// 50s: ≤ platform Vercel (maxDuration=60 di /api/proxy) & upstream 45s — 180s hanya menggantung sampai dipenggal platform.
+const LLM_TIMEOUT_MS = 50_000
 
 function friendlyFetchError(err: unknown): unknown {
   const name = (err as any)?.name
@@ -304,6 +328,17 @@ async function directFetchJson(
   return parseResponseJson(response)
 }
 
+// Timeout di level platform (Vercel menggal serverless function): status 504
+// dari gateway, status 502 dari /api/proxy, atau body FUNCTION_INVOCATION_TIMEOUT.
+// Ini BUKAN error transient — jangan di-retry: retry hanya menggantung browser
+// 3x lipat lebih lama + biaya invocation 3x tanpa peluang sukses. Retry tetap
+// dipertahankan untuk error sementara lainnya (429, 5xx umum dari provider,
+// network error).
+function isPlatformTimeoutFailure(status: number, bodyText: string): boolean {
+  if (status === 504 || status === 502) return true
+  return bodyText.includes("FUNCTION_INVOCATION_TIMEOUT")
+}
+
 // Jalur proxy (/api/proxy) dengan retry+backoff untuk error sementara.
 // Dipakai untuk endpoint publik (hindari CORS) dan sebagai fallback
 // localhost saat dev server jalan di mesin yang sama.
@@ -315,6 +350,8 @@ async function proxyFetch(
 ): Promise<any> {
   // Retry dengan backoff untuk error sementara (429/5xx/proxy 500). Satu
   // transient failure tidak boleh langsung jadi error user-visible.
+  // KECUALI timeout platform (lihat isPlatformTimeoutFailure) — itu tidak
+  // transient, jadi langsung gagal tanpa retry.
   const maxRetries = 2
   let lastError: Error | null = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -329,6 +366,13 @@ async function proxyFetch(
         signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
       })
       if (!proxyRes.ok) {
+        const bodyText = await proxyRes.text().catch(() => "")
+        if (isPlatformTimeoutFailure(proxyRes.status, bodyText)) {
+          throw new Error(
+            `Proxy error: ${proxyRes.status} — server terpotong batas waktu platform (bukan error sementara). ` +
+            `Coba sekali lagi manual, atau ringkas konten / pakai model yang lebih cepat.`
+          )
+        }
         const retryable = proxyRes.status === 429 || proxyRes.status >= 500
         const e = new Error(`Proxy error: ${proxyRes.status}`)
         ;(e as any).retryable = retryable
@@ -341,7 +385,11 @@ async function proxyFetch(
       if (upstreamStatus >= 400) {
         const errDetail = typeof result.data === "object" ? JSON.stringify(result.data) : String(result.data)
         const e = new Error(`API Error (${provider} @ ${hostOf(url)}): ${upstreamStatus} - ${errDetail}${authHint(url, upstreamStatus)}`)
-        ;(e as any).retryable = upstreamStatus === 429 || upstreamStatus >= 500
+        // 5xx dari provider umumnya transient (boleh retry), kecuali body-nya
+        // menandakan timeout platform — itu percuma di-retry.
+        ;(e as any).retryable =
+          (upstreamStatus === 429 || upstreamStatus >= 500) &&
+          !errDetail.includes("FUNCTION_INVOCATION_TIMEOUT")
         throw e
       }
       // Kalau proxy mengembalikan string (mis. hasil gabungan chunk SSE),
@@ -924,7 +972,7 @@ function parseJobFromUrl(url: string, title: string): { companyName: string; pos
 
 export async function analyzeJobPosting(url: string): Promise<JobPosting & { rawText: string }> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured. Silakan atur API Key di menu Konfigurasi API.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   let pageText = ""
   let jsonLd: any = null
@@ -1100,7 +1148,7 @@ Ekstrak dari URL dan judul halaman. Jika judul mengandung "|", bagian kiri biasa
 
 export async function analyzeJobText(text: string): Promise<JobPosting & { rawText: string }> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured. Silakan atur API Key di menu Konfigurasi API.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   if (!text || text.trim().length < 10) {
     throw new Error("Teks terlalu pendek.")
@@ -1149,7 +1197,7 @@ ${text.slice(0, 24000)}`
 
 export async function extractKeyPoints(jobPosting: JobPosting): Promise<{ critical: string[]; important: string[]; niceToHave: string[] }> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = `Anda adalah analis resume ahli. Ekstrak key points dari deskripsi pekerjaan dan kategorikan.
 Gunakan HANYA informasi yang tersedia di teks lowongan - DILARANG mengarang atau menebak requirement yang tidak tertulis.
@@ -1182,7 +1230,7 @@ Kategorikan setiap requirement sebagai critical (wajib), important (penting), at
 
 export async function analyzeATS(resume: ResumeData, jobPosting: JobPosting, lang: "id" | "en" = "id"): Promise<ATSAnalysis> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const langSystem = lang === "en"
     ? "Respond and write suggestions in ENGLISH (professional business tone)."
@@ -1343,7 +1391,7 @@ function blendWithDeterministic(analysis: ATSAnalysis, resume: ResumeData, jobPo
 
 export async function translateResume(resume: ResumeData, targetLang: "id" | "en"): Promise<ResumeData> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const langName = targetLang === "en" ? "English" : "Indonesian"
   const systemPrompt = `Anda adalah penerjemah resume profesional. Terjemahkan resume ke ${langName} tanpa mengubah struktur dan data fakta.
@@ -1362,7 +1410,7 @@ Kembalikan JSON dengan struktur sama persis seperti input.`
 
 export async function optimizeResumeContent(resume: ResumeData, jobPosting: JobPosting, keyPoints: string[], lang: "id" | "en" = "id"): Promise<{ optimized: ResumeData; changes: string[] }> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = lang === "en"
     ? "You are a resume ARRANGER, not a rewriter. Reorder and lightly rephrase the user's EXISTING resume to match the job posting. Return JSON. FORBIDDEN: adding/removing/changing any fact (companies, positions, dates, schools, skills, projects, awards). Only the summary and item descriptions may be reworded, and item order may change. NEVER fabricate data. Respond in ENGLISH."
@@ -1511,7 +1559,7 @@ export function preserveOriginalFacts(original: ResumeData, optimized: ResumeDat
 
 export async function generateResumeContent(section: string, context: string, lang: "id" | "en" = "id"): Promise<string> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = lang === "en"
     ? `You are a resume writing assistant. Write professional content for the "${section}" section in ENGLISH. Use strong action verbs.`
@@ -1526,7 +1574,7 @@ Tulis konten yang profesional, padat, dan menarik. Fokus pada pencapaian dan has
 
 export async function generateSummary(experiences: string, skills: string, targetRole: string, lang: "id" | "en" = "id"): Promise<string> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = lang === "en"
     ? "You are a professional resume writer. Create a powerful professional summary. Maximum 3-4 sentences. Focus on achievements and unique value. Write in ENGLISH."
@@ -1541,6 +1589,50 @@ Tulis ringkasan yang menarik, relevan, dan berdasarkan data pengalaman yang ada.
   return callLLM(prompt, systemPrompt, config)
 }
 
+// ---------- Surat Lamaran ----------
+// Tulis surat lamaran formal Bahasa Indonesia dari data CV + konteks lowongan.
+// Output plain text (bukan JSON) mengikuti pola generateSummary; fallback
+// tanpa API ada di komponen (generator template deterministik lokal).
+export async function generateCoverLetter(resume: ResumeData, jobContext: string): Promise<string> {
+  const config = getApiConfig()
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
+
+  const systemPrompt = `Anda penulis surat lamaran kerja profesional berbahasa Indonesia.
+
+ATURAN KERAS (WAJIB):
+- Gunakan HANYA fakta dari data CV yang diberikan. DILARANG menambah pengalaman, angka, skill, sertifikasi, atau pencapaian yang TIDAK tertulis di data CV (anti-hallucination).
+- Bila data CV tidak menyebut sesuatu, jangan mengarangnya. Gunakan kalimat umum yang jujur sebagai gantinya.
+- Output HANYA teks surat lamaran, tanpa markdown, tanpa tanda bintang/pagar, tanpa komentar atau penjelasan di luar isi surat.`
+
+  const prompt = `Tulis surat lamaran kerja FORMAL Bahasa Indonesia, panjang 250-350 kata, untuk dilampirkan bersama CV.
+
+Struktur standar surat lamaran Indonesia:
+1. Tempat dan tanggal penulisan (opsional; pakai tanggal hari ini, format Indonesia).
+2. Perihal "Lamaran Posisi [posisi]" dan baris "Lampiran: 1 berkas".
+3. Salam pembuka (cth. "Dengan hormat,").
+4. Paragraf pembuka: memperkenalkan diri, menyebut posisi yang dilamar dan sumber informasi lowongan.
+5. Dua paragraf isi: hubungkan ringkasan/pengalaman/pendidikan/skill dari data CV dengan persyaratan lowongan. Sebutkan HANYA bukti yang ada di data CV.
+6. Paragraf penutup: kesediaan mengikuti interview dan ucapan terima kasih.
+7. Salam penutup ("Hormat saya,") diikuti nama lengkap dari data CV.
+
+DATA CV (satu-satunya sumber fakta):
+${JSON.stringify(resume, null, 2)}
+
+KONTEKS LOWONGAN (persyaratan lowongan; bisa kosong):
+${jobContext || "(tidak ada konteks lowongan; tulis surat berdasarkan data CV saja)"}
+
+Tulis suratnya sekarang. HANYA teks surat.`
+
+  const raw = await callLLM(prompt, systemPrompt, config)
+  // Bersihkan sisa blok reasoning (model reasoning) dan fence markdown bila
+  // model membungkus output dengan ``` ... ``` agar hasil murni teks surat.
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/^```[a-z]*\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim()
+}
+
 export function detectJobSource(url: string): JobPosting["source"] {
   if (/linkedin\.com/i.test(url)) return "linkedin"
   if (/jobstreet\.com/i.test(url)) return "jobstreet"
@@ -1551,7 +1643,7 @@ export function detectJobSource(url: string): JobPosting["source"] {
 
 export async function generateSampleResume(jobPosting: JobPosting): Promise<ResumeData> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured. Silakan atur API Key di menu Konfigurasi API.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = `You are an expert resume writer. Create a REALISTIC sample resume based on the job posting below.
 IMPORTANT: Write ALL content (summary, descriptions, skill names, awards) in PROFESSIONAL ENGLISH.
@@ -1596,7 +1688,7 @@ GAYA BAHASA WAJIB KUANTITATIF DAN MEMBUKTIKAN: setiap bullet pengalaman, organis
 
 export async function extractResumeFromCvText(cvText: string): Promise<ResumeData> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = `Anda adalah ahli parsing resume. Ekstrak informasi dari teks CV/Resume berikut ke dalam JSON.
 
@@ -1630,7 +1722,7 @@ Jika tanggal tidak lengkap, gunakan format YYYY-MM atau YYYY.`
 
 export async function analyzeCvAgainstJob(resumeData: ResumeData, jobPosting: JobPosting): Promise<{ analysis: ATSAnalysis; optimized: ResumeData }> {
   const config = getApiConfig()
-  if (!config) throw new Error("API not configured.")
+  if (!config) throw new Error(API_NOT_CONFIGURED_ERROR)
 
   const systemPrompt = `Anda adalah ahli ATS (Applicant Tracking System) dan optimasi resume.
 Analisis resume terhadap lowongan, lalu berikan skor ATS dan versi yang sudah dioptimalkan.
