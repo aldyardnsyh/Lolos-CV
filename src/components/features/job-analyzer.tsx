@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import {
   Link2, Loader2, Building2, MapPin, Briefcase, ListChecks, Star, AlertCircle,
-  Copy, CheckCircle2, ClipboardPaste, Wand2,
+  Copy, CheckCircle2, ClipboardPaste, Wand2, AlertTriangle, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
-import { analyzeJobPosting, analyzeJobText, extractKeyPoints, generateSampleResume, getApiConfig, safeLocalSet } from "@/lib/api"
+import { analyzeJobPosting, analyzeJobText, extractKeyPoints, generateSampleResume, getApiConfig, safeLocalGet, safeLocalSet } from "@/lib/api"
 import { buildMockSampleResume } from "@/lib/sample-mock"
 import { useSampleGenerating } from "@/lib/sample-generation"
 import type { JobPosting } from "@/types"
@@ -41,6 +41,53 @@ function isValidUrl(str: string): boolean {
   }
 }
 
+// Pagar data-loss: cek apakah localStorage sudah berisi CV (bukan resume kosong).
+function storedResumeHasContent(): boolean {
+  try {
+    const raw = safeLocalGet("resume_data")
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    return !!(
+      parsed?.personalInfo?.fullName ||
+      parsed?.summary ||
+      (Array.isArray(parsed?.experiences) && parsed.experiences.length > 0) ||
+      (Array.isArray(parsed?.organizations) && parsed.organizations.length > 0) ||
+      (Array.isArray(parsed?.education) && parsed.education.length > 0) ||
+      (Array.isArray(parsed?.research) && parsed.research.length > 0) ||
+      (Array.isArray(parsed?.skills) && parsed.skills.length > 0) ||
+      (Array.isArray(parsed?.skillGroups) && parsed.skillGroups.length > 0) ||
+      (Array.isArray(parsed?.projects) && parsed.projects.length > 0) ||
+      (Array.isArray(parsed?.certifications) && parsed.certifications.length > 0)
+    )
+  } catch {
+    return false
+  }
+}
+
+// Semua varian pesan "API belum dikonfigurasi" (konstanta api.ts maupun pesan
+// lokal di komponen ini) diawali kalimat yang sama — dipakai untuk menawarkan
+// mode demo di kartu error.
+const API_NOT_CONFIGURED_PREFIX = "API belum dikonfigurasi"
+
+function asStrList(v: unknown): string[] {
+  return Array.isArray(v)
+    ? v.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : []
+}
+
+// Lowongan tersimpan (ditulis saat analisis sukses) untuk jalur mode demo
+// bila kartu hasil belum ada di state.
+function readStoredJob(): JobPosting | null {
+  try {
+    const raw = safeLocalGet("job_analysis")
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? (parsed as JobPosting) : null
+  } catch {
+    return null
+  }
+}
+
 export function JobAnalyzer() {
   const [url, setUrl] = useState("")
   const [pasteText, setPasteText] = useState("")
@@ -55,12 +102,41 @@ export function JobAnalyzer() {
   const [hasApiKey, setHasApiKey] = useState(false)
   const [generatingFromJob, setGeneratingFromJob] = useSampleGenerating()
   const [ctaMessage, setCtaMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false)
 
   useEffect(() => {
     const check = () => setHasApiKey(!!getApiConfig())
     check()
     window.addEventListener("api_config_changed", check)
     return () => window.removeEventListener("api_config_changed", check)
+  }, [])
+
+  // Restorasi hasil analisis saat mount: sebelumnya kartu hasil tampak kosong
+  // setelah refresh padahal "job_analysis" tersimpan. Input URL tidak
+  // disimpan, jadi dibiarkan kosong.
+  useEffect(() => {
+    try {
+      const raw = safeLocalGet("job_analysis")
+      if (!raw) return
+      const parsed = JSON.parse(raw) as (Partial<JobPosting> & { rawText?: unknown }) | null
+      if (!parsed || typeof parsed !== "object") return
+      if (!parsed.position && !parsed.companyName && !parsed.description) return
+      setResult({
+        url: String(parsed.url ?? ""),
+        source: parsed.source ?? "other",
+        companyName: String(parsed.companyName ?? ""),
+        position: String(parsed.position ?? ""),
+        location: String(parsed.location ?? ""),
+        description: String(parsed.description ?? ""),
+        keyRequirements: asStrList(parsed.keyRequirements),
+        preferredQualifications: asStrList(parsed.preferredQualifications),
+        responsibilities: asStrList(parsed.responsibilities),
+        benefits: asStrList(parsed.benefits),
+        jobStreams: Array.isArray(parsed.jobStreams) ? (parsed.jobStreams as JobPosting["jobStreams"]) : [],
+        educationRequirements: asStrList(parsed.educationRequirements),
+      })
+      if (typeof parsed.rawText === "string") setRawText(parsed.rawText)
+    } catch {}
   }, [])
 
   const handleAnalyze = async () => {
@@ -131,19 +207,51 @@ Deskripsi: ${result.description}${reqText}${benText}`
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Generate bersifat destruktif bila CV user sudah terisi → minta konfirmasi
+  // dulu (sama seperti jalur generate di dalam builder).
   const handleBuildResume = async () => {
     if (!result || generatingFromJob) return
+    if (storedResumeHasContent()) {
+      setShowReplaceConfirm(true)
+      return
+    }
+    await performBuildResume()
+  }
+
+  // demoJob: diberikan lewat tombol "Coba Tanpa API Key (Mode Demo)" di kartu
+  // error — boleh null (tanpa data lowongan) dan selalu memakai mock tanpa
+  // API. Tanpa argumen = jalur biasa dari hasil analisis (pakai API bila ada).
+  // Jalur destruktif yang sama: backup dulu, modal konfirmasi tetap jalan.
+  const performBuildResume = async (demoJob?: JobPosting | null) => {
+    const isDemo = demoJob !== undefined
+    const job = isDemo ? demoJob : result
+    if ((!job && !isDemo) || generatingFromJob) return
     setGeneratingFromJob(true)
+    setShowReplaceConfirm(false)
     setCtaMessage(null)
     try {
+      // Backup dulu ke key yang SAMA dengan tombol "Urungkan generate terakhir"
+      // di builder, baru timpa via event.
+      const previous = safeLocalGet("resume_data")
+      if (previous) {
+        try { safeLocalSet("resume_data_before_generate", previous) } catch {}
+      }
       const hasApi = !!getApiConfig()
-      const sample = hasApi ? await generateSampleResume(result) : buildMockSampleResume(result)
-      window.dispatchEvent(new CustomEvent("resume_data_updated", { detail: { resume: sample, lang: "en" } }))
+      const sample = isDemo
+        ? buildMockSampleResume(job)
+        : hasApi && job
+          ? await generateSampleResume(job)
+          : buildMockSampleResume(job)
+      window.dispatchEvent(new CustomEvent("resume_data_updated", { detail: { resume: sample, lang: "id" } }))
       setCtaMessage({
         type: "success",
-        text: hasApi
-          ? "CV berhasil dibuat! Kamu akan diarahkan ke editor."
-          : "Contoh CV dibuat dari lowongan ini (tanpa API). Kamu akan diarahkan ke editor.",
+        text: isDemo
+          ? job
+            ? "Contoh CV dibuat dari lowongan ini (mode demo, tanpa API). Kamu akan diarahkan ke editor."
+            : "Contoh CV dibuat dengan data contoh (mode demo). Kamu akan diarahkan ke editor."
+          : hasApi
+            ? "CV berhasil dibuat! Kamu akan diarahkan ke editor."
+            : "Contoh CV dibuat dari lowongan ini (tanpa API). Kamu akan diarahkan ke editor.",
       })
       setTimeout(() => document.getElementById("builder")?.scrollIntoView({ behavior: "smooth" }), 600)
     } catch (err: any) {
@@ -153,8 +261,60 @@ Deskripsi: ${result.description}${reqText}${benText}`
     }
   }
 
+  // Tombol "Coba Tanpa API Key (Mode Demo)" di kartu error: bangun CV contoh
+  // tanpa API dari data lowongan yang tersedia (hasil analisis di state,
+  // lowongan tersimpan, atau null). Jalur destruktif yang sama: bila CV sudah
+  // berisi, modal konfirmasi tetap muncul dulu.
+  const handleDemoBuild = async () => {
+    if (generatingFromJob) return
+    if (storedResumeHasContent()) {
+      setShowReplaceConfirm(true)
+      return
+    }
+    await performBuildResume(result ?? readStoredJob())
+  }
+
   return (
     <section id="job-analyzer" className="py-24 relative">
+      {showReplaceConfirm && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
+          onClick={() => setShowReplaceConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 animate-[modal-in_.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowReplaceConfirm(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Batal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/40 text-amber-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">Ganti isi CV kamu?</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Generate Sample CV akan menimpa semua data CV yang sudah kamu isi. Data saat ini dibackup otomatis dan bisa diurungkan lewat tombol &quot;Urungkan generate terakhir&quot; di editor.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <Button variant="outline" className="flex-1" onClick={() => setShowReplaceConfirm(false)}>
+                Batal
+              </Button>
+              <Button className="flex-1 gap-2" onClick={() => (result ? performBuildResume() : performBuildResume(readStoredJob()))} disabled={generatingFromJob}>
+                <Wand2 className="w-4 h-4" />
+                Generate &amp; Ganti
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
 
       <div className="container relative max-w-4xl">
@@ -264,7 +424,24 @@ Deskripsi: ${result.description}${reqText}${benText}`
             <CardContent className="pt-6">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                  {error.startsWith(API_NOT_CONFIGURED_PREFIX) && (
+                    <div className="mt-3 flex flex-col items-start gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDemoBuild}
+                        disabled={generatingFromJob}
+                        className="gap-2 border-amber-500/60 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                      >
+                        <Wand2 className="w-4 h-4" />
+                        Coba Tanpa API Key (Mode Demo)
+                      </Button>
+                      <p className="text-xs text-muted-foreground">Hasil demo pakai contoh data, gratis tanpa kunci.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

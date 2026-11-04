@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import {
-  BarChart3, Loader2, CheckCircle2, XCircle, Lightbulb, TrendingUp, AlertTriangle, CloudOff,
+  BarChart3, Loader2, CheckCircle2, XCircle, Lightbulb, TrendingUp, AlertTriangle, CloudOff, Wand2, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,33 +11,76 @@ import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 import { analyzeATS, getApiConfig, normalizeResumeData, optimizeResumeContent, safeLocalGet, safeLocalSet } from "@/lib/api"
 import { buildExclusionTerms, extractMeaningfulTokens } from "@/lib/keywords"
-import type { ResumeData, JobPosting, ATSAnalysis } from "@/types"
+import type { ResumeData, JobPosting, ATSAnalysis, KeyPoint } from "@/types"
 
-const demoScores: ATSAnalysis = {
-  overallScore: 72,
-  keywordMatch: 65,
-  formatScore: 88,
-  sectionScore: 80,
-  lengthScore: 55,
-  matchedKeywords: ["React", "TypeScript", "Team Leadership", "Agile", "REST API", "Git", "CI/CD", "Problem Solving"],
-  missingKeywords: ["Docker", "Microservices", "GraphQL", "Terraform", "Kubernetes", "System Design"],
-  suggestions: [
-    "Tambahkan kata kunci Docker dan Microservices yang diminta di lowongan",
-    "Perkuat bagian pengalaman dengan metrik dan hasil konkret (angka, persentase)",
-    "Tambahkan section tentang System Design jika relevan dengan posisi",
-    "Optimalkan panjang CV agar tidak lebih dari 2 halaman (saat ini terlalu panjang)",
-    "Gunakan action verbs yang lebih kuat: 'Memimpin', 'Menginisiasi', 'Mengoptimalkan'",
-  ],
-  keyPoints: [
-    { text: "Pengalaman dengan React/Next.js minimal 3 tahun", importance: "critical", matched: true, matchScore: 90 },
-    { text: "Memahami Microservices architecture", importance: "critical", matched: false, matchScore: 20 },
-    { text: "Pengalaman dengan GraphQL", importance: "important", matched: false, matchScore: 0 },
-    { text: "Pengalaman Docker & Kubernetes", importance: "important", matched: false, matchScore: 10 },
-    { text: "Team leadership experience", importance: "critical", matched: true, matchScore: 85 },
-    { text: "Pengalaman dengan CI/CD pipeline", importance: "important", matched: true, matchScore: 70 },
-    { text: "Strong problem-solving skills", importance: "critical", matched: true, matchScore: 75 },
-    { text: "Pengalaman System Design", importance: "nice-to-have", matched: false, matchScore: 15 },
-  ],
+// Keyword mode demo bila tidak ada lowongan tersimpan: administrasi umum
+// untuk pasar lamaran lokal, bukan keyword IT lama (Docker, Kubernetes, dst).
+const DEMO_ADMIN_KEYWORDS = ["Microsoft Excel", "Administrasi", "Komunikasi", "Microsoft Word", "Data Entry"]
+
+function strList(v: unknown): string[] {
+  return Array.isArray(v)
+    ? v.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : []
+}
+
+// Lowongan tersimpan (ditulis job-analyzer saat analisis sukses) sebagai
+// sumber keyword mode demo.
+function readStoredJobAnalysis(): JobPosting | null {
+  try {
+    const raw = safeLocalGet("job_analysis")
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? (parsed as JobPosting) : null
+  } catch {
+    return null
+  }
+}
+
+// Distribusi importance realistis (audit: jangan semua badge "WAJIB"):
+// 3 pertama critical, sisanya bergantian important / nice-to-have.
+function demoImportance(i: number): KeyPoint["importance"] {
+  if (i < 3) return "critical"
+  return i % 2 === 1 ? "important" : "nice-to-have"
+}
+
+// Skor demo mode tanpa API. Bukan hasil analisis CV user: keyword diambil dari
+// lowongan tersimpan bila ada, kalau tidak dari keyword administrasi umum.
+// Selalu ditampilkan bersama banner disclaimer yang jelas.
+function buildDemoScores(job: JobPosting | null): ATSAnalysis {
+  const jobKw = [
+    ...strList(job?.keyRequirements),
+    ...strList(job?.preferredQualifications),
+  ]
+  const keywords = Array.from(new Set(jobKw.length > 0 ? jobKw : DEMO_ADMIN_KEYWORDS)).slice(0, 8)
+  const cut = Math.max(1, Math.min(5, Math.round(keywords.length * 0.6)))
+  const matchedKeywords = keywords.slice(0, cut)
+  const missingKeywords = keywords.slice(cut)
+  return {
+    overallScore: 68,
+    keywordMatch: 64,
+    formatScore: 85,
+    sectionScore: 75,
+    lengthScore: 60,
+    matchedKeywords,
+    missingKeywords,
+    suggestions: [
+      missingKeywords.length > 0
+        ? `Tambahkan kata kunci yang diminta lowongan: ${missingKeywords.slice(0, 4).join(", ")}`
+        : "Perkuat kata kunci lowongan di ringkasan dan deskripsi pengalaman",
+      "Perkuat bagian pengalaman dengan metrik dan hasil konkret (angka, persentase)",
+      "Gunakan action verbs yang lebih kuat: 'Mengelola', 'Menginisiasi', 'Mengoptimalkan'",
+      "Pastikan format konsisten (font, spacing, bullet points) agar mudah dibaca ATS",
+    ],
+    keyPoints: keywords.map((text, i) => {
+      const matched = i % 3 !== 2
+      return {
+        text,
+        importance: demoImportance(i),
+        matched,
+        matchScore: matched ? 72 + ((i * 7) % 21) : 10 + ((i * 11) % 15),
+      }
+    }),
+  }
 }
 
 function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAnalysis {
@@ -100,15 +143,39 @@ function generateMockAnalysis(resume: ResumeData, jobPosting: JobPosting): ATSAn
       "Gunakan angka dan metrik dalam deskripsi pengalaman",
       "Pastikan format konsisten (font, spacing, bullet points)",
     ],
-    keyPoints: safeArr<string>(jobPosting?.keyRequirements).slice(0, 8).map((req) => {
+    keyPoints: safeArr<string>(jobPosting?.keyRequirements).slice(0, 8).map((req, i) => {
       const { hit, score } = scoreRequirement(req)
       return {
         text: req,
-        importance: "critical" as const,
+        // Distribusi realistis, bukan semua "WAJIB" (audit: mendorong
+        // keyword-stuffing).
+        importance: demoImportance(i),
         matched: hit,
         matchScore: score,
       }
     }),
+  }
+}
+
+// Pagar data-loss: cek raw string "resume_data" apakah benar-benar berisi CV
+// (autosave builder selalu menulis object, jadi cek isinya, bukan keberadaannya).
+function resumeRawHasContent(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw)
+    return !!(
+      parsed?.personalInfo?.fullName ||
+      parsed?.summary ||
+      (Array.isArray(parsed?.experiences) && parsed.experiences.length > 0) ||
+      (Array.isArray(parsed?.organizations) && parsed.organizations.length > 0) ||
+      (Array.isArray(parsed?.education) && parsed.education.length > 0) ||
+      (Array.isArray(parsed?.research) && parsed.research.length > 0) ||
+      (Array.isArray(parsed?.skills) && parsed.skills.length > 0) ||
+      (Array.isArray(parsed?.skillGroups) && parsed.skillGroups.length > 0) ||
+      (Array.isArray(parsed?.projects) && parsed.projects.length > 0) ||
+      (Array.isArray(parsed?.certifications) && parsed.certifications.length > 0)
+    )
+  } catch {
+    return false
   }
 }
 
@@ -121,6 +188,7 @@ export function AtsOptimizer() {
   const [optimizing, setOptimizing] = useState(false)
   const [optimized, setOptimized] = useState(false)
   const [changes, setChanges] = useState<string[]>([])
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false)
 
   useEffect(() => {
     const check = () => setHasApiKey(!!getApiConfig())
@@ -129,6 +197,8 @@ export function AtsOptimizer() {
     return () => window.removeEventListener("api_config_changed", check)
   }, [])
 
+  // Optimasi bersifat destruktif bila CV user sudah terisi → minta konfirmasi
+  // dulu (sama seperti jalur generate di dalam builder).
   const handleOptimize = async () => {
     const config = getApiConfig()
     if (!config) return
@@ -137,14 +207,25 @@ export function AtsOptimizer() {
     const storedJob = safeLocalGet("job_analysis")
     if (!storedResume || !storedJob) return
 
+    if (resumeRawHasContent(storedResume)) {
+      setShowReplaceConfirm(true)
+      return
+    }
+    await performOptimize(storedResume, storedJob)
+  }
+
+  const performOptimize = async (storedResume: string, storedJob: string) => {
     setOptimizing(true)
+    setShowReplaceConfirm(false)
     setError(null)
     try {
       const resume: ResumeData = normalizeResumeData(JSON.parse(storedResume))
       const job: JobPosting = JSON.parse(storedJob)
       const missingKw = result?.missingKeywords || []
-      // Snapshot "sebelum" disimpan dulu; resume_data baru ditimpa hanya jika optimasi sukses
-      safeLocalSet("resume_data_before_optimize", storedResume)
+      // Backup "sebelum" ditulis dulu ke key yang SAMA dengan tombol
+      // "Urungkan generate terakhir" di builder; resume_data baru ditimpa
+      // hanya jika optimasi sukses.
+      safeLocalSet("resume_data_before_generate", storedResume)
 
       const { optimized: optimizedResume, changes: appliedChanges } = await optimizeResumeContent(resume, job, missingKw, "id")
       safeLocalSet("resume_data", JSON.stringify(optimizedResume))
@@ -178,7 +259,7 @@ export function AtsOptimizer() {
       setError("API belum dikonfigurasi. Menampilkan hasil demo.")
       setIsDemo(true)
       await new Promise((r) => setTimeout(r, 1500))
-      setResult(demoScores)
+      setResult(buildDemoScores(readStoredJobAnalysis()))
       setAnalyzing(false)
       return
     }
@@ -199,7 +280,7 @@ export function AtsOptimizer() {
         setIsDemo(true)
         setError("Data tersimpan korup dan tidak bisa dibaca. Isi ulang resume/lowongan lalu coba lagi.")
         await new Promise((r) => setTimeout(r, 800))
-        setResult(demoScores)
+        setResult(buildDemoScores(readStoredJobAnalysis()))
         setAnalyzing(false)
         return
       }
@@ -212,13 +293,13 @@ export function AtsOptimizer() {
         try {
           setResult(generateMockAnalysis(resume, job))
         } catch {
-          setResult(demoScores)
+          setResult(buildDemoScores(readStoredJobAnalysis()))
         }
       }
     } else {
       setIsDemo(true)
       await new Promise((r) => setTimeout(r, 1500))
-      setResult(demoScores)
+      setResult(buildDemoScores(readStoredJobAnalysis()))
     }
 
     setAnalyzing(false)
@@ -245,6 +326,49 @@ export function AtsOptimizer() {
 
   return (
     <section id="ats-optimizer" className="py-24">
+      {showReplaceConfirm && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
+          onClick={() => setShowReplaceConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 animate-[modal-in_.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowReplaceConfirm(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Batal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/40 text-amber-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">Ganti isi CV kamu?</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Optimasi akan mengganti isi CV dengan versi hasil optimasi. Data saat ini dibackup otomatis dan bisa diurungkan lewat tombol &quot;Urungkan generate terakhir&quot; di editor.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <Button variant="outline" className="flex-1" onClick={() => setShowReplaceConfirm(false)}>
+                Batal
+              </Button>
+              <Button className="flex-1 gap-2" onClick={() => {
+                const storedResume = safeLocalGet("resume_data")
+                const storedJob = safeLocalGet("job_analysis")
+                if (storedResume && storedJob) performOptimize(storedResume, storedJob)
+              }} disabled={optimizing}>
+                <Wand2 className="w-4 h-4" />
+                Generate &amp; Ganti
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="container max-w-4xl">
         <div className="text-center mb-10">
           <div className="flex justify-center mb-4">
@@ -303,20 +427,23 @@ export function AtsOptimizer() {
           </Card>
         )}
 
-        {isDemo && !error && (
-          <Card className="border-blue-500/30 bg-blue-50/50 dark:bg-blue-950/20 mb-6">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <BarChart3 className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Mode Demo</p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    Hasil berdasarkan data simulasi. Untuk analisis akurat, buat resume dan analisis lowongan terlebih dahulu.
-                  </p>
-                </div>
+        {isDemo && result && (
+          <div
+            role="note"
+            className="mb-6 rounded-2xl border-2 border-amber-400/60 bg-amber-50 dark:bg-amber-950/30 p-4 sm:p-5"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-800 dark:text-amber-200">
+                  Ini contoh hasil dengan data lain, bukan skor CV-mu.
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-0.5">
+                  Hubungkan Mesin AI untuk skor sesuai lowonganmu.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         )}
 
         {result && (
