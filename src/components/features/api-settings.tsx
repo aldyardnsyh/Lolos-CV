@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Key, Check, Eye, EyeOff, AlertCircle, ExternalLink, Sparkles, Loader2, RefreshCw,
   ChevronDown, ChevronUp, Wifi, WifiOff, Zap, Coins,
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { PROVIDERS, type ProviderConfig, type ProviderModel, type ReasoningEffort } from "@/types"
+import { PROVIDERS, type ApiProvider, type ProviderConfig, type ProviderModel, type ReasoningEffort } from "@/types"
 import { detectProviderWithCandidates, getModelsForProvider, testConnection, getDefaultModel, getReasoningEffortsForModel, fetchAvailableModels, safeLocalGet, safeLocalSet, safeLocalRemove, type DetectionResult } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
@@ -36,6 +36,60 @@ const EFFORT_COLORS: Record<ReasoningEffort, string> = {
   xmax: "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800",
 }
 
+// Pesan error yang menandakan kunci ditolak (autentikasi gagal), dipakai
+// Mode Mudah untuk memberi saran yang tepat, bukan error teknis mentah.
+const AUTH_ERROR_RE = /401|403|unauthor|forbidden|invalid|api key not valid|permission/i
+
+type EasyStatus =
+  | { kind: "idle" }
+  | { kind: "connecting" }
+  | { kind: "ok"; providerName: string; model: string }
+  | { kind: "error"; message: string; suggestion?: string }
+
+// Blok panduan "Apa ini?" - tampil di Mode Mudah dan Mode Lanjutan, di atas input.
+function GuideBlock() {
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+      <p className="text-sm font-semibold">Apa ini?</p>
+      <p className="text-sm text-muted-foreground">
+        Fitur pintar LolosCV (bedah lowongan, tulis konten CV dan surat lamaran) butuh kunci dari layanan AI.
+        Kunci ini disimpan hanya di browsermu.
+      </p>
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium">Belum punya kunci? Paling mudah, gratis, tanpa kartu kredit:</p>
+        <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+          <li>
+            Buka{" "}
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener"
+              className="text-primary font-medium underline underline-offset-2 hover:opacity-80"
+            >
+              aistudio.google.com
+            </a>{" "}
+            di browser (cukup akun Google).
+          </li>
+          <li>Klik &quot;Get API key&quot; lalu &quot;Create API key&quot;, copy kuncinya.</li>
+          <li>Tempel di sini, klik Sambungkan. Selesai.</li>
+        </ol>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Alternatif gratis lain:{" "}
+        <a
+          href="https://console.groq.com/keys"
+          target="_blank"
+          rel="noopener"
+          className="text-primary font-medium underline underline-offset-2 hover:opacity-80"
+        >
+          Groq (console.groq.com)
+        </a>
+        . Tanpa kunci? Pakai mode demo di builder, tetap gratis.
+      </p>
+    </div>
+  )
+}
+
 export function ApiSettings() {
   const [apiKey, setApiKey] = useState("")
   const [selectedModel, setSelectedModel] = useState("")
@@ -56,6 +110,14 @@ export function ApiSettings() {
   const [loadingModels, setLoadingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
 
+  // Mode Mudah (default) vs Mode Lanjutan
+  const [easyMode, setEasyMode] = useState(true)
+  const [easyStatus, setEasyStatus] = useState<EasyStatus>({ kind: "idle" })
+  const [savingTesting, setSavingTesting] = useState(false)
+  // Snapshot konfigurasi yang tersimpan di localStorage; dipakai agar status
+  // Mode Mudah hanya bilang "Tersambung" saat isi input memang cocok dengannya.
+  const storedConfigRef = useRef<{ apiKey: string; providerId?: ApiProvider; model: string } | null>(null)
+
   useEffect(() => {
     const stored = safeLocalGet("api_config")
     setHasConfig(!!stored)
@@ -67,6 +129,11 @@ export function ApiSettings() {
         setSelectedEffort(config.reasoningEffort || "medium")
         setShowFullConfig(false)
         const provider = PROVIDERS.find((p) => p.id === config.provider)
+        storedConfigRef.current = {
+          apiKey: config.apiKey || "",
+          providerId: provider?.id,
+          model: config.model || (provider ? getDefaultModel(provider.id) : ""),
+        }
         if (provider) {
           setDetectedProvider(provider)
           setAvailableModels(getModelsForProvider(provider.id))
@@ -74,6 +141,7 @@ export function ApiSettings() {
           setSelectedModel(config.model || getDefaultModel(provider.id))
           // Restore custom base URL too, otherwise re-saving wipes it back to the default
           setCustomBaseUrl(config.baseUrl && config.baseUrl !== provider.baseUrl ? config.baseUrl : "")
+          setEasyStatus({ kind: "ok", providerName: provider.name, model: config.model || getDefaultModel(provider.id) })
         }
       } catch {}
     }
@@ -153,12 +221,13 @@ export function ApiSettings() {
     }
   }, [detectedProvider, apiKey, customBaseUrl, selectedModel, selectedEffort])
 
-  const handleTestConnection = async () => {
-    if (!detectedProvider) return
+  // Dipakai tombol "Tes Koneksi" manual DAN otomatis sebelum Simpan (T3).
+  const runTest = async (): Promise<boolean> => {
+    if (!detectedProvider) return false
     const custom = detectedProvider.id === "custom"
-    if (!custom && !apiKey.trim()) return
-    if (custom && !customBaseUrl.trim()) return
-    if (custom && !selectedModel) return
+    if (!custom && !apiKey.trim()) return false
+    if (custom && !customBaseUrl.trim()) return false
+    if (custom && !selectedModel) return false
     setTesting(true); setTestResult(null)
     const result = await testConnection({
       apiKey: apiKey.trim(),
@@ -168,9 +237,12 @@ export function ApiSettings() {
       reasoningEffort: selectedEffort,
     })
     setTestResult(result); setTesting(false)
+    return result
   }
 
-  const saveConfig = () => {
+  const handleTestConnection = () => { void runTest() }
+
+  const doSaveConfig = () => {
     if (!detectedProvider) return
     const custom = detectedProvider.id === "custom"
     if (!custom && !apiKey.trim()) return
@@ -190,6 +262,135 @@ export function ApiSettings() {
     setTimeout(() => setSaved(false), 3000)
   }
 
+  // T3: Simpan otomatis mengetes koneksi dulu bila belum pernah lolos tes.
+  // Config tidak pernah disimpan tanpa tes yang berhasil.
+  const handleSaveConfig = async () => {
+    if (!canSave || savingTesting) return
+    if (testResult === true) {
+      doSaveConfig()
+      return
+    }
+    setSavingTesting(true)
+    const ok = await runTest()
+    setSavingTesting(false)
+    if (ok) doSaveConfig()
+  }
+
+  // MODE MUDAH: satu tombol "Sambungkan" yang melakukan semuanya.
+  // Deteksi provider dari prefix kunci (deteksi yang sama dengan Mode Lanjutan),
+  // pilih model bawaan (dipercantik dengan daftar model live bila berhasil dimuat),
+  // tes koneksi, lalu simpan persis seperti jalur Simpan existing.
+  const handleConnect = useCallback(async () => {
+    const key = apiKey.trim()
+    if (!key) {
+      setEasyStatus({
+        kind: "error",
+        message: "Masukkan kunci AI terlebih dahulu.",
+        suggestion: "Ikuti 3 langkah di atas untuk mendapatkan kunci gratis.",
+      })
+      return
+    }
+    if (/\s/.test(key)) {
+      setEasyStatus({
+        kind: "error",
+        message: "Kunci mengandung spasi atau baris baru.",
+        suggestion: "Copy ulang kuncinya, pastikan tidak ada spasi di awal, tengah, atau akhir.",
+      })
+      return
+    }
+    setEasyStatus({ kind: "connecting" })
+    const result = detectProviderWithCandidates(key)
+    // Kunci ambigu (bisa dari beberapa provider): ambil kandidat paling mungkin.
+    const provider = result.provider ?? result.candidates.find((p) => p.id !== "custom") ?? null
+    if (!provider) {
+      setEasyStatus({
+        kind: "error",
+        message: "Format kunci tidak dikenali.",
+        suggestion: "Pastikan kunci disalin utuh. Untuk layanan lain (OpenRouter, endpoint lokal), coba Mode Lanjutan.",
+      })
+      return
+    }
+    let model = getDefaultModel(provider.id)
+    if (!model) {
+      setEasyStatus({
+        kind: "error",
+        message: `Belum ada model bawaan untuk ${provider.name}.`,
+        suggestion: "Coba Mode Lanjutan untuk memilih model secara manual.",
+      })
+      return
+    }
+    // Coba ambil daftar model live (jalur "Muat Live" yang sudah ada) supaya
+    // model bawaannya akurat. Gagal? Lanjut pakai model bawaan per provider.
+    let authFailed = false
+    try {
+      const live = await fetchAvailableModels({ apiKey: key, model, provider: provider.id, baseUrl: provider.baseUrl })
+      if (live.length > 0) {
+        const preferred = live.find((m) => m.id === model) ?? live.find((m) => m.free) ?? live[0]
+        model = preferred.id
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || "")
+      if (AUTH_ERROR_RE.test(msg)) authFailed = true
+      // Error lain: abaikan, tes koneksi di bawah yang akan memutuskan.
+    }
+    if (authFailed) {
+      setEasyStatus({
+        kind: "error",
+        message: `Kunci tidak diterima oleh ${provider.name}.`,
+        suggestion: "Periksa lagi kuncinya, pastikan tidak ada spasi.",
+      })
+      return
+    }
+    const ok = await testConnection({ apiKey: key, model, provider: provider.id, baseUrl: provider.baseUrl })
+    if (!ok) {
+      setEasyStatus({
+        kind: "error",
+        message: `Gagal tersambung ke ${provider.name}.`,
+        suggestion: "Periksa lagi kuncinya, pastikan tidak ada spasi. Kalau kuncimu dari layanan lain, coba Mode Lanjutan untuk memilih provider secara manual.",
+      })
+      return
+    }
+    // Simpan persis seperti jalur Simpan existing: localStorage "api_config" + event "api_config_changed".
+    const config = { apiKey: key, model, provider: provider.id, baseUrl: provider.baseUrl }
+    safeLocalSet("api_config", JSON.stringify(config))
+    setHasConfig(true)
+    setShowFullConfig(false)
+    setDetectedProvider(provider)
+    setAvailableModels(getModelsForProvider(provider.id))
+    setSelectedModel(model)
+    setCustomBaseUrl("")
+    setLiveModels(null)
+    setModelsError(null)
+    setAmbiguousResult(null)
+    setTestResult(null)
+    storedConfigRef.current = { apiKey: key, providerId: provider.id, model }
+    setEasyStatus({ kind: "ok", providerName: provider.name, model })
+    window.dispatchEvent(new Event("api_config_changed"))
+  }, [apiKey])
+
+  // Input Mode Mudah: tanpa deteksi otomatis saat mengetik, deteksi terjadi saat Sambungkan.
+  const handleEasyKeyChange = useCallback((key: string) => {
+    setApiKey(key)
+    setEasyStatus((s) => (s.kind === "ok" || s.kind === "error" ? { kind: "idle" } : s))
+  }, [])
+
+  const switchToEasy = () => {
+    setEasyMode(true)
+    const stored = storedConfigRef.current
+    const provider = stored ? PROVIDERS.find((p) => p.id === stored.providerId) : null
+    if (stored && provider && stored.apiKey === apiKey.trim() && detectedProvider?.id === provider.id) {
+      setEasyStatus({ kind: "ok", providerName: provider.name, model: selectedModel || stored.model })
+    } else {
+      setEasyStatus({ kind: "idle" })
+    }
+  }
+
+  const switchToAdvanced = () => {
+    setEasyMode(false)
+    // Sinkronkan deteksi prefix agar UI lanjutan langsung konsisten dengan isi input.
+    if (apiKey.trim() && !detectedProvider && !ambiguousResult) handleKeyChange(apiKey)
+  }
+
   const clearConfig = () => {
     safeLocalRemove("api_config")
     safeLocalRemove("job_analysis")
@@ -197,6 +398,8 @@ export function ApiSettings() {
     setDetectedProvider(null); setAvailableModels([]); setEffortOptions([])
     setHasConfig(false); setShowFullConfig(false); setTestResult(null); setAmbiguousResult(null); setCustomBaseUrl("")
     setLiveModels(null); setLoadingModels(false); setModelsError(null)
+    storedConfigRef.current = null
+    setEasyStatus({ kind: "idle" })
     window.dispatchEvent(new Event("api_config_changed"))
   }
 
@@ -204,12 +407,13 @@ export function ApiSettings() {
   const isCustom = detectedProvider?.id === "custom"
   // Custom: key opsional, Base URL wajib; provider lain: key wajib
   const canTest = !!detectedProvider && (isCustom ? !!customBaseUrl.trim() : !!apiKey.trim()) && (isCustom ? !!selectedModel : true)
-  // Simpan hanya bisa setelah tes koneksi berhasil — pastikan user tidak bingung
-  const canSave = canTest && testResult === true && !!selectedModel
+  // T3: simpan tidak lagi mewajibkan tes manual lebih dulu; Simpan otomatis mengetes.
+  const canSave = canTest && !!selectedModel
   const freeCount = shownModels.filter((m) => m.free).length
   const paidCount = shownModels.filter((m) => !m.free).length
   // Reset testResult saat input berubah
   useEffect(() => { if (testResult !== null) setTestResult(null) }, [apiKey, selectedModel, customBaseUrl, detectedProvider?.id])
+  const connecting = easyStatus.kind === "connecting"
 
   return (
     <section id="api-settings" className="py-24">
@@ -221,13 +425,13 @@ export function ApiSettings() {
             </div>
           </div>
           <h2 className="text-3xl md:text-4xl font-bold font-display mb-4">
-            Konfigurasi{" "}
+            Mesin AI{" "}
             <span className="text-primary">
-              API Key
+              (opsional)
             </span>
           </h2>
           <p className="text-muted-foreground">
-            Masukkan API key dari penyedia yang kamu miliki. Provider dan model yang tersedia akan terdeteksi otomatis.
+            Tanpa ini pun CV tetap bisa dibuat: mode demo dan isi manual, gratis.
           </p>
         </div>
 
@@ -240,9 +444,13 @@ export function ApiSettings() {
                   Koneksi API
                 </CardTitle>
                 <CardDescription>
-                  {hasConfig && !showFullConfig
-                    ? "API Key sudah dikonfigurasi. Klik 'Ubah Setting' untuk mengganti."
-                    : "Masukkan API key, provider akan terdeteksi otomatis"}
+                  {easyMode
+                    ? (easyStatus.kind === "ok"
+                        ? "Kunci aktif. Fitur AI siap dipakai."
+                        : "Tempel kunci, klik Sambungkan. Sisanya diatur otomatis.")
+                    : hasConfig && !showFullConfig
+                      ? "API Key sudah dikonfigurasi. Klik 'Ubah Setting' untuk mengganti."
+                      : "Masukkan API key, provider akan terdeteksi otomatis"}
                 </CardDescription>
               </div>
               {detectedProvider && (
@@ -251,6 +459,104 @@ export function ApiSettings() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="flex justify-center">
+              <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/50 p-1">
+                <button
+                  type="button"
+                  onClick={switchToEasy}
+                  aria-pressed={easyMode}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    easyMode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Mode Mudah
+                </button>
+                <button
+                  type="button"
+                  onClick={switchToAdvanced}
+                  aria-pressed={!easyMode}
+                  className={cn(
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    !easyMode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Mode Lanjutan
+                </button>
+              </div>
+            </div>
+
+            {easyMode ? (
+              <div className="space-y-5">
+                <GuideBlock />
+                <div className="space-y-2">
+                  <Label htmlFor="api-key-easy">Kunci AI (API Key)</Label>
+                  <div className="relative">
+                    <Input
+                      id="api-key-easy"
+                      type={showKey ? "text" : "password"}
+                      placeholder="Tempel kunci di sini (Google AI Studio, Groq, OpenAI, dll.)"
+                      value={apiKey}
+                      onChange={(e) => handleEasyKeyChange(e.target.value)}
+                      disabled={connecting}
+                      autoComplete="off"
+                      className="pr-20 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKey(!showKey)}
+                      aria-label={showKey ? "Sembunyikan kunci" : "Tampilkan kunci"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button onClick={handleConnect} disabled={connecting} className="w-full h-12 text-base gap-2">
+                  {connecting ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Menyambungkan...</>
+                  ) : (
+                    <><Zap className="w-5 h-5" /> Sambungkan</>
+                  )}
+                </Button>
+
+                {easyStatus.kind === "ok" && (
+                  <div
+                    role="status"
+                    className="flex items-center gap-2 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800"
+                  >
+                    <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                      Tersambung ke {easyStatus.providerName} ({easyStatus.model})
+                    </p>
+                  </div>
+                )}
+                {easyStatus.kind === "error" && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+                  >
+                    <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-red-800 dark:text-red-200">{easyStatus.message}</p>
+                      {easyStatus.suggestion && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">{easyStatus.suggestion}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {hasConfig && (
+                  <div className="flex justify-center">
+                    <Button variant="ghost" size="sm" onClick={clearConfig}>
+                      Hapus Konfigurasi
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
             {hasConfig && !showFullConfig ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-4 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
@@ -275,6 +581,7 @@ export function ApiSettings() {
                 </div>
               </div>
             ) : (<>
+              <GuideBlock />
               <div className="space-y-2">
                 <Label htmlFor="api-key">API Key</Label>
                 <div className="relative">
@@ -515,13 +822,13 @@ export function ApiSettings() {
             )}
 
             <div className="flex items-center gap-3 flex-wrap">
-              <Button onClick={saveConfig} disabled={!canSave} className="flex-1 gap-2 min-w-[180px]" title={!canSave ? "Tes koneksi dulu sebelum menyimpan" : "Simpan konfigurasi"}>
-                {saved ? <><Check className="w-4 h-4" /> Tersimpan</> : "Simpan Konfigurasi"}
+              <Button onClick={handleSaveConfig} disabled={!canSave || savingTesting} className="flex-1 gap-2 min-w-[180px]" title={!canSave ? "Lengkapi dulu: API key dan model" : "Simpan konfigurasi (tes koneksi otomatis dijalankan dulu)"}>
+                {savingTesting ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengetes lalu menyimpan...</> : saved ? <><Check className="w-4 h-4" /> Tersimpan</> : "Simpan Konfigurasi"}
               </Button>
               {hasConfig && <Button variant="outline" onClick={clearConfig}>Hapus</Button>}
               {detectedProvider && (
                 <>
-                  <Button variant="outline" onClick={handleTestConnection} disabled={testing || !canTest} className="gap-2" title={canTest ? "Tes koneksi ke provider" : isCustom ? "Pilih model dulu" : "Isi API key dulu"}>
+                  <Button variant="outline" onClick={handleTestConnection} disabled={testing || savingTesting} className="gap-2" title={canTest ? "Tes koneksi ke provider" : isCustom ? "Pilih model dulu" : "Isi API key dulu"}>
                     {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : testResult === true ? <Wifi className="w-4 h-4 text-emerald-600" /> : testResult === false ? <WifiOff className="w-4 h-4 text-red-600" /> : <RefreshCw className="w-4 h-4" />}
                     {testing ? "Menguji..." : "Tes Koneksi"}
                   </Button>
@@ -534,10 +841,18 @@ export function ApiSettings() {
                 </>
               )}
             </div>
-            {!canSave && detectedProvider && (
+            {detectedProvider && !(canSave && testResult === true) && (
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                {testing ? "Sedang menguji koneksi..." : testResult === false ? "Koneksi gagal. Perbaiki dulu, lalu tes lagi sebelum menyimpan." : "Langkah terakhir: klik \"Tes Koneksi\" dulu. Kalau berhasil, tombol Simpan akan aktif."}
+                {testing || savingTesting
+                  ? "Sedang mengetes koneksi..."
+                  : testResult === false
+                    ? "Koneksi gagal. Perbaiki dulu, lalu coba simpan lagi (simpan otomatis mengetes koneksi dulu)."
+                    : canSave
+                      ? "Simpan otomatis mengetes koneksi dulu."
+                      : isCustom && !customBaseUrl.trim()
+                        ? "Isi Base URL untuk provider kustom terlebih dahulu."
+                        : "Masukkan API key terlebih dahulu."}
               </p>
             )}
 
@@ -592,6 +907,8 @@ export function ApiSettings() {
               </div>
             )}
           </>)}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
