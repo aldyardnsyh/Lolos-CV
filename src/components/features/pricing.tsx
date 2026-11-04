@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import Image from "next/image"
-import { Check, Sparkles, Heart, Copy, CheckCircle2, Trophy, ExternalLink, QrCode, ChevronDown } from "lucide-react"
+import { Check, Sparkles, Heart, Trophy, Copy, CheckCircle2, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DonationCard } from "@/components/features/donation-card"
 
 const freeFeatures = [
   "Semua template CV (ATS Classic, ATS + Foto, Creative, Modern Minimal)",
@@ -14,10 +14,6 @@ const freeFeatures = [
   "Unduh PDF tanpa watermark",
   "Tidak ada masa percobaan",
 ]
-
-const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
-const SAWERIA_USERNAME = "pogungsoftwarehouse"
-const QRIS_IMAGE = "/qris-donasi.jpg"
 
 interface Donor {
   rank: number
@@ -32,8 +28,6 @@ const RANK_STYLES = [
 ]
 
 export function Pricing() {
-  const [copied, setCopied] = useState(false)
-  const [showQris, setShowQris] = useState(false)
   const [donors, setDonors] = useState<Donor[]>([])
   const [totalDonation, setTotalDonation] = useState(0)
   const [loadingDonors, setLoadingDonors] = useState(true)
@@ -52,14 +46,6 @@ export function Pricing() {
   }, [])
 
   useEffect(() => { loadDonors() }, [loadDonors])
-
-  const handleCopy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {}
-  }
 
   return (
     <section id="pricing" className="py-24 relative">
@@ -154,78 +140,7 @@ export function Pricing() {
                   </div>
                 </div>
 
-                <a
-                  href={SAWERIA_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-90 transition-opacity"
-                >
-                  <Heart className="w-4 h-4" />
-                  Donasi via Saweria
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-
-                <div>
-                  <p className="text-xs font-semibold mb-1">Username Saweria</p>
-                  <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
-                    <span className="text-sm font-medium truncate">{SAWERIA_USERNAME}</span>
-                    <button
-                      onClick={() => handleCopy(SAWERIA_URL)}
-                      className="shrink-0 p-1.5 rounded-md hover:bg-accent transition-colors"
-                      aria-label="Salin link Saweria"
-                    >
-                      {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowQris((v) => !v)}
-                    aria-expanded={showQris}
-                    aria-controls="qris-panel"
-                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
-                  >
-                    <span className="flex items-center gap-2">
-                      <QrCode className="w-4 h-4 text-primary" />
-                      Donasi via QRIS
-                    </span>
-                    <ChevronDown className={`w-4 h-4 transition-transform ${showQris ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {showQris && (
-                    <div id="qris-panel" className="mt-3 rounded-xl border border-border bg-card p-3">
-                      <Image
-                        src={QRIS_IMAGE}
-                        alt="Kode QRIS untuk donasi ke pengembang LolosCV"
-                        width={908}
-                        height={1280}
-                        sizes="260px"
-                        className="mx-auto h-auto w-full max-w-[260px] rounded-lg"
-                      />
-                      <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed text-center">
-                        Scan pakai m-banking atau e-wallet yang mendukung QRIS (GoPay, OVO, DANA, ShopeePay, dan bank).
-                        Nominal bebas, tidak ada minimum.
-                      </p>
-                      <p className="mt-2 text-[11px] text-muted-foreground leading-relaxed text-center">
-                        Di aplikasi pembayaran, nama merchant yang muncul:
-                        <span className="font-medium text-foreground"> BANGUN RESUME ID</span>. Pastikan namanya sama
-                        sebelum kamu bayar.
-                      </p>
-                      <a
-                        href={QRIS_IMAGE}
-                        download="qris-loloscv.jpg"
-                        className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-medium text-primary hover:underline"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Unduh gambar QRIS
-                      </a>
-                    </div>
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Leaderboard diperbarui otomatis dari Saweria. Donasi QRIS tetap tercatat manual oleh pengelola.
-                </p>
+                <DonationCard />
               </CardContent>
             </Card>
           </div>

@@ -1,13 +1,12 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
-import Image from "next/image"
 
 import {
   FileText, Plus, Trash2, Download, Sparkles, Loader2, Eye, Edit3,
   ChevronDown, ChevronUp, User, Users, Briefcase, GraduationCap, Wrench,
   Globe, Award, Languages, CheckCircle2, AlertCircle, Upload, Wand2,
-  EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X, QrCode,
+  EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, X,
   LayoutTemplate, Type, ALargeSmall, FlaskConical, Save, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -24,6 +23,7 @@ import {
   compressImageFile, buildResumeFile, downloadResumeFile, parseResumeFile, clearAppStorage,
 } from "@/lib/resume-file"
 import { CVUploader } from "@/components/features/cv-uploader"
+import { DonationCard } from "@/components/features/donation-card"
 import type { ResumeData, ResumeTemplate, ResumeExperience, ResumeEducation, ResumeSkill, JobPosting } from "@/types"
 
 interface TemplateStyle {
@@ -393,15 +393,12 @@ export function ResumeBuilder() {
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
   const [preGenerate, setPreGenerate] = useState<ResumeData | null>(null)
   const [showSupportPrompt, setShowSupportPrompt] = useState(false)
-  const [showQrisInPrompt, setShowQrisInPrompt] = useState(false)
   // Guard data contoh sebelum print (T9) + konfirmasi hapus semua data (T7).
   const [showPlaceholderWarning, setShowPlaceholderWarning] = useState(false)
   const [showWipeConfirm, setShowWipeConfirm] = useState(false)
   // T10: state terkontrol buka/tutup SectionCard. Key = id section atau
   // "personal"/"photo". Undefined fallback: terbuka (kecuali foto defaultOpen false).
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
-
-  const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
 
   // Refs untuk autosave debounce (T1), status hydrate, dan guard placeholder.
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -413,7 +410,7 @@ export function ResumeBuilder() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // T3: ref tombol aksi utama tiap modal; difokuskan otomatis saat modal terbuka.
   const generateConfirmActionRef = useRef<HTMLButtonElement>(null)
-  const supportPromptActionRef = useRef<HTMLButtonElement>(null)
+  const supportPromptActionRef = useRef<HTMLDivElement>(null)
   const placeholderWarningActionRef = useRef<HTMLButtonElement>(null)
   const wipeConfirmActionRef = useRef<HTMLButtonElement>(null)
 
@@ -1105,7 +1102,6 @@ export function ResumeBuilder() {
       // dialog print sudah selesai (user sudah cetak/simpan/batal). Modal
       // donasi sekarang muncul DI SINI, sekali, bukan menyela sebelum print.
       if (safeLocalGet("donation_modal_dismissed") !== "1") {
-        setShowQrisInPrompt(false)
         setShowSupportPrompt(true)
       }
 
@@ -1310,7 +1306,9 @@ export function ResumeBuilder() {
           onClick={() => setShowSupportPrompt(false)}
         >
           <div
-            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 text-center"
+            ref={supportPromptActionRef}
+            tabIndex={-1}
+            className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-card border border-border shadow-2xl p-6 text-center focus:outline-none"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1336,56 +1334,18 @@ export function ResumeBuilder() {
                 ? "LolosCV is free. A small donation keeps the servers running. Completely optional."
                 : "LolosCV gratis. Donasi kecil membantu biaya server, sepenuhnya opsional."}
             </p>
-            <div className="flex flex-col gap-2 mt-5">
-              <Button
-                ref={supportPromptActionRef}
-                className="w-full gap-2"
-                onClick={() => {
-                  window.open(SAWERIA_URL, "_blank", "noopener,noreferrer")
-                  setShowSupportPrompt(false)
-                }}
-              >
-                <Heart className="w-4 h-4" />
-                {resumeLang === "en" ? "Donate via Saweria" : "Donasi via Saweria"}
-                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-              </Button>
-              <button
-                type="button"
-                onClick={() => setShowQrisInPrompt((v) => !v)}
-                aria-expanded={showQrisInPrompt}
-                aria-controls="qris-prompt-panel"
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
-              >
-                <QrCode className="w-4 h-4 text-primary" />
-                {resumeLang === "en" ? "Donate via QRIS" : "Donasi via QRIS"}
-              </button>
-              {showQrisInPrompt && (
-                <div id="qris-prompt-panel" className="rounded-xl border border-border bg-background p-3">
-                  <Image
-                    src="/qris-donasi.jpg"
-                    alt="Kode QRIS untuk donasi ke pengembang LolosCV"
-                    width={908}
-                    height={1280}
-                    sizes="220px"
-                    className="mx-auto h-auto w-full max-w-[220px] rounded-lg"
-                  />
-                  <p className="mt-2 text-[11px] text-muted-foreground text-center leading-relaxed">
-                    {resumeLang === "en"
-                      ? "Scan with any QRIS-enabled banking or e-wallet app."
-                      : "Scan pakai m-banking atau e-wallet yang mendukung QRIS."}
-                  </p>
-                </div>
-              )}
+            <div className="mt-5">
+              <DonationCard compact lang={resumeLang === "en" ? "en" : "id"} onDone={() => setShowSupportPrompt(false)} />
               <Button
                 variant="outline"
-                className="w-full"
+                className="w-full mt-2"
                 onClick={() => setShowSupportPrompt(false)}
               >
                 {resumeLang === "en" ? "Maybe later" : "Nanti saja"}
               </Button>
               <button
                 onClick={dismissDonationForever}
-                className="mx-auto mt-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+                className="mx-auto mt-2 block text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
               >
                 {resumeLang === "en" ? "Don't show this again" : "Jangan tampilkan lagi"}
               </button>
