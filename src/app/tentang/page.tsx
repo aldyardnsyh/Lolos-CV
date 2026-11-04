@@ -136,20 +136,9 @@ export default function TentangPage() {
             </div>
           </section>
 
-          <section id="kontak" className="mt-12 scroll-mt-24">
-            <h2 className="mb-4 font-display text-2xl font-bold md:text-3xl">Kontak</h2>
-            {/* TODO(owner): ganti dengan email kontak asli sebelum publikasi */}
-            <div className="space-y-4 leading-relaxed text-muted-foreground">
-              <p>
-                Email: [akan diisi, lihat TODO]
-              </p>
-              <p>
-                Pertanyaan, masukan, atau laporan bug sangat kami tunggu. Sampai kontak resmi
-                terpasang di sini, cara tercepat menyampaikan masukan adalah lewat kanal pengembang
-                yang akan dicantumkan di paragraf ini.
-              </p>
-            </div>
-          </section>
+          {/* TODO(owner): tambahkan section #kontak dengan email/sosial asli
+              sebelum publikasi. Untuk sementara seluruh section disembunyikan
+              agar placeholder tidak tampil di website. */}
         </article>
 
         <section className="border-t border-border bg-primary/5">

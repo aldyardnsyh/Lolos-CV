@@ -422,6 +422,10 @@ export function ResumeBuilder() {
   // T3: ref tombol aksi utama tiap modal; difokuskan otomatis saat modal terbuka.
   const generateConfirmActionRef = useRef<HTMLButtonElement>(null)
   const supportPromptActionRef = useRef<HTMLDivElement>(null)
+  // Alur cetak dua tahap: clone + metadata print disimpan sementara selama
+  // modal dukungan tampil; dipakai finishPrintFlow setelah modal ditutup.
+  const printCloneRef = useRef<HTMLElement | null>(null)
+  const printMetaRef = useRef<{ prevTitle: string; hadDarkClass: boolean } | null>(null)
   const placeholderWarningActionRef = useRef<HTMLButtonElement>(null)
   const wipeConfirmActionRef = useRef<HTMLButtonElement>(null)
 
@@ -739,7 +743,7 @@ export function ResumeBuilder() {
       if (e.key !== "Escape") return
       if (showWipeConfirm) setShowWipeConfirm(false)
       else if (showPlaceholderWarning) setShowPlaceholderWarning(false)
-      else if (showSupportPrompt) setShowSupportPrompt(false)
+      else if (showSupportPrompt) closeSupportPrompt()
       else if (showGenerateConfirm) setShowGenerateConfirm(false)
     }
     window.addEventListener("keydown", onKeyDown)
@@ -1124,27 +1128,49 @@ export function ResumeBuilder() {
       // sebagai nama default file yang disimpan).
       const pi = resume.personalInfo
       document.title = sanitizePdfTitle(`${pi.fullName || "CV"} - ${pi.headline || "CV"}`)
-      window.print()
 
-      // window.print() bersifat blocking: sampai baris ini dijalankan berarti
-      // dialog print sudah selesai (user sudah cetak/simpan/batal). Modal
-      // dukungan muncul DI SINI, setiap kali user menyimpan CV.
+      // URUTAN ALUR SIMPAN PDF:
+      // 1. Clone resume sudah siap di DOM (di atas), print BELUM dijalankan.
+      // 2. Modal doa/dukungan muncul dulu.
+      // 3. Apapun cara modal ditutup (tombol lanjut, tutup, Escape, klik
+      //    luar), dialog simpan PDF baru dijalankan lewat closeSupportPrompt.
+      // Penyelesaiannya ada di finishPrintFlow; cleanup di situ juga.
+      printCloneRef.current = clone
+      printMetaRef.current = { prevTitle, hadDarkClass }
       setSupportMessage(nextSupportMessage())
       setShowSupportPrompt(true)
-
-      // Cleanup after print dialog closes
-      setTimeout(() => {
-        document.body.removeChild(clone)
-        setExportingPdf(false)
-      }, 500)
     } catch (err) {
       showToast("Gagal export: " + (err instanceof Error ? err.message : "unknown error"), "error")
       setExportingPdf(false)
-    } finally {
-      document.title = prevTitle
-      if (hadDarkClass) htmlEl.classList.add("dark")
     }
   }
+
+  // Melanjutkan alur cetak setelah modal dukungan ditutup: jalankan dialog
+  // print, lalu pulihkan judul tab + tema dan bersihkan clone.
+  const finishPrintFlow = useCallback(() => {
+    const clone = printCloneRef.current
+    const meta = printMetaRef.current
+    if (!clone || !meta) return
+    printCloneRef.current = null
+    printMetaRef.current = null
+    try {
+      window.print()
+    } catch (err) {
+      showToast("Gagal export: " + (err instanceof Error ? err.message : "unknown error"), "error")
+    } finally {
+      document.body.removeChild(clone)
+      setExportingPdf(false)
+      document.title = meta.prevTitle
+      if (meta.hadDarkClass) document.documentElement.classList.add("dark")
+    }
+  }, [])
+
+  // Satu pintu menutup modal dukungan: selalu melanjutkan alur cetak agar
+  // unduhan tidak pernah tersangkut bila modal ditutup lewat jalur mana pun.
+  const closeSupportPrompt = useCallback(() => {
+    setShowSupportPrompt(false)
+    finishPrintFlow()
+  }, [finishPrintFlow])
 
   // Lanjutan alur cetak: bila user masih di mode edit, auto-switch ke preview
   // dulu lalu beri delay singkat untuk render sebelum print.
@@ -1324,7 +1350,7 @@ export function ResumeBuilder() {
       {showSupportPrompt && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
-          onClick={() => setShowSupportPrompt(false)}
+          onClick={closeSupportPrompt}
         >
           <div
             ref={supportPromptActionRef}
@@ -1336,7 +1362,7 @@ export function ResumeBuilder() {
             aria-label={resumeLang === "en" ? "A message for you" : "Pesan untukmu"}
           >
             <button
-              onClick={() => setShowSupportPrompt(false)}
+              onClick={closeSupportPrompt}
               className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               aria-label="Tutup"
             >
@@ -1359,13 +1385,13 @@ export function ResumeBuilder() {
                 : "Kalau LolosCV membantu, kamu boleh dukung pengembangnya. Sepenuhnya opsional, dan CV-mu tetap gratis tanpa syarat."}
             </p>
             <div className="mt-4">
-              <DonationCard compact lang={resumeLang === "en" ? "en" : "id"} onDone={() => setShowSupportPrompt(false)} />
+              <DonationCard compact lang={resumeLang === "en" ? "en" : "id"} onDone={closeSupportPrompt} />
               <Button
                 variant="outline"
                 className="w-full mt-2"
-                onClick={() => setShowSupportPrompt(false)}
+                onClick={closeSupportPrompt}
               >
-                {resumeLang === "en" ? "Close" : "Tutup"}
+                {resumeLang === "en" ? "Continue saving PDF" : "Lanjut simpan PDF"}
               </Button>
             </div>
           </div>
