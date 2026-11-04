@@ -1,7 +1,11 @@
 import type { Metadata } from "next"
 import { Plus_Jakarta_Sans, Poppins } from "next/font/google"
 import { SITE_URL } from "@/lib/site"
+import { SEO_PAGES } from "@/lib/seo/pages"
 import "./globals.css"
+
+// Entri landing di registry SEO: satu sumber untuk title & description utama.
+const LANDING = SEO_PAGES[0]
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -9,9 +13,12 @@ const jakarta = Plus_Jakarta_Sans({
   display: "swap",
 })
 
+// Poppins hanya dipakai di class font-display (heading) dengan weight 600
+// (font-semibold, termasuk default CardTitle) dan 700 (font-bold). Weight lain
+// dihapus agar tidak membebani load font (CWV, docs/seo-plan-2026-11.md S2).
 const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["600", "700"],
   variable: "--font-poppins",
   display: "swap",
 })
@@ -25,8 +32,7 @@ const softwareAppJsonLd = {
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   inLanguage: ["id", "en"],
-  description:
-    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF. Gratis tanpa batas.",
+  description: LANDING.description,
   offers: { "@type": "Offer", price: "0", priceCurrency: "IDR" },
 }
 
@@ -74,6 +80,54 @@ const faqJsonLd = {
         text: "Bisa. Hasil CV ATS-friendly bisa langsung di-export ke PDF siap kirim ke perusahaan.",
       },
     },
+    {
+      "@type": "Question",
+      name: "LolosCV benar-benar gratis?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Ya. Semua fitur utama Rp 0, tanpa trial, tanpa watermark, tanpa kartu kredit. Kalau terbantu, donasi via Saweria sepenuhnya opsional.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Apakah LolosCV bagian dari Kemnaker atau MagangHub?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Tidak. LolosCV independen dan tidak berafiliasi dengan Kemnaker maupun MagangHub. Untuk info resmi pendaftaran magang, selalu cek maganghub.kemnaker.go.id. LolosCV hanya membantu menyiapkan CV-nya.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Apakah CV saya bisa diunduh gratis sebagai PDF?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Ya, tanpa watermark dan tanpa batas unduhan. Tips: di dialog yang muncul, pilih tujuan \"Save as PDF / Simpan sebagai PDF\".",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Apakah datanya aman?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "CV-mu tersimpan di browser perangkatmu. Saat kamu pakai fitur AI opsional, isi CV diteruskan sekali lewat server kami ke penyedia AI pilihanmu, tidak disimpan, tidak dicatat. Rincian lengkap ada di halaman Kebijakan Privasi kami.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Perlu akun?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Tidak perlu. Buka, isi, unduh. Data tersimpan otomatis di browser-mu (jangan bersihkan riwayat/browser di perangkat itu sebelum unduh atau simpan file proyek).",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Saya fresh graduate tanpa pengalaman kerja, cocok?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Cocok. Ada contoh CV khusus fresh graduate (organisasi, magang, proyek), dan fitur analisis lowongan membantu menyesuaikan CV dengan persyaratan yang ditulis perusahaan.",
+      },
+    },
   ],
 }
 
@@ -82,21 +136,24 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: "LolosCV",
   url: SITE_URL,
+  logo: `${SITE_URL}/icon.png`,
+}
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "LolosCV",
+  alternateName: "LolosCV ATS",
+  url: SITE_URL,
 }
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "LolosCV - Buat CV yang Lolos Seleksi ATS (Gratis)",
+    default: LANDING.title,
     template: "%s | LolosCV",
   },
-  description:
-    "Buat CV ATS-friendly berbahasa Indonesia/Inggris yang menyesuaikan dengan lowongan target. Tempel link lowongan, analisis persyaratannya, optimasi skor ATS, export PDF. Gratis tanpa batas.",
-  keywords: [
-    "pembuat cv", "buat cv online", "cv builder indonesia", "cv ATS",
-    "ATS friendly", "CV online gratis", "resume builder", "contoh CV ATS",
-    "cara lolos seleksi ATS", "optimasi CV", "template CV ATS",
-  ],
+  description: LANDING.description,
   authors: [{ name: "PogungSoftwareHouseTeam (PSHT)" }],
   creator: "PogungSoftwareHouseTeam (PSHT)",
   robots: { index: true, follow: true },
@@ -105,9 +162,9 @@ export const metadata: Metadata = {
     google: "Ai-p-D3AGFVyuCGUzkaR4lWV0eHq0a3bjJEgnlJIG5Y",
   },
   openGraph: {
-    title: "LolosCV - Buat CV yang Lolos Seleksi ATS (Gratis)",
+    title: LANDING.title,
     description:
-      "Tempel link lowongan, analisis persyaratan dengan AI, dan hasilkan CV ATS-friendly siap export PDF.",
+      "Tempel link lowongan, susun CV yang menjawab persyaratannya. Gratis Rp 0, tanpa akun, unduh PDF tanpa watermark.",
     url: SITE_URL,
     siteName: "LolosCV",
     locale: "id_ID",
@@ -115,9 +172,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "LolosCV - Buat CV yang Lolos Seleksi ATS (Gratis)",
+    title: LANDING.title,
     description:
-      "Tempel link lowongan, analisis persyaratan dengan AI, dan hasilkan CV ATS-friendly siap export PDF.",
+      "Tempel link lowongan, susun CV yang menjawab persyaratannya. Gratis Rp 0, tanpa akun, unduh PDF tanpa watermark.",
   },
 }
 
@@ -146,6 +203,10 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
         />
         {children}
       </body>
