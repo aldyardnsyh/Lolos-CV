@@ -1,6 +1,7 @@
 "use client"
 
-import { Sparkles, Github, Twitter, Instagram, Linkedin } from "lucide-react"
+import { Sparkles } from "lucide-react"
+import Link from "next/link"
 
 export function Footer() {
   const scrollTo = (id: string) => {
@@ -76,23 +77,25 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             &copy; {new Date().getFullYear()} LolosCV. All rights reserved.
           </p>
-          <div className="flex items-center gap-4">
+          {/* TODO: tambahkan email kontak & sosial media asli di sini setelah tersedia */}
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             {[
-              { icon: Github, href: "https://github.com" },
-              { icon: Twitter, href: "https://twitter.com" },
-              { icon: Instagram, href: "https://instagram.com" },
-              { icon: Linkedin, href: "https://linkedin.com" },
-            ].map(({ icon: Icon, href }, i) => (
-              <a
-                key={i}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={["GitHub", "Twitter", "Instagram", "LinkedIn"][i]}
-                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              { href: "/contoh-cv-ats", label: "Contoh CV ATS" },
+              { href: "/template-cv-ats", label: "Template CV ATS" },
+              { href: "/cv-ats-friendly", label: "Panduan ATS" },
+              { href: "/contoh-surat-lamaran", label: "Contoh Surat Lamaran" },
+              { href: "/faq", label: "FAQ" },
+              { href: "/tentang", label: "Tentang" },
+              { href: "/privacy", label: "Kebijakan Privasi" },
+              { href: "/terms", label: "Ketentuan" },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Icon className="w-4 h-4" />
-              </a>
+                {item.label}
+              </Link>
             ))}
           </div>
         </div>
