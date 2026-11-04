@@ -629,7 +629,7 @@ export function ApiSettings() {
                       API key ini bisa berasal dari beberapa provider, termasuk layanan agregator multi-model
                       (OpenRouter, OpenAgentic, dan sejenisnya) yang menyatukan banyak model dari provider lain.
                       Jika key Anda dari agregator, pilih <strong>Custom / Universal</strong> di bawah, isi Base URL
-                      layanan tersebut, lalu klik "Muat Live" untuk melihat semua model (gratis & berbayar):
+                      layanan tersebut, lalu klik &quot;Muat Live&quot; untuk melihat semua model (gratis &amp; berbayar):
                     </p>
                   </div>
                 </div>
@@ -752,7 +752,7 @@ export function ApiSettings() {
 
                 {shownModels.length === 0 && !liveModels && !loadingModels && !modelsError && (
                   <p className="text-xs text-muted-foreground">
-                    Belum ada daftar model. Klik "Muat Live" untuk mengambil dari <code className="font-mono">{customBaseUrl || detectedProvider.baseUrl || "Base URL"}</code>.
+                    Belum ada daftar model. Klik &quot;Muat Live&quot; untuk mengambil dari <code className="font-mono">{customBaseUrl || detectedProvider.baseUrl || "Base URL"}</code>.
                   </p>
                 )}
 

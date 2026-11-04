@@ -3392,7 +3392,7 @@ export function ResumeBuilder() {
                     {exportingPdf ? "Menyiapkan PDF..." : "Cetak / Simpan PDF"}
                   </Button>
                   <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    Di dialog berikutnya, pilih tujuan 'Save as PDF' / 'Simpan sebagai PDF' lalu Simpan.
+                    Di dialog berikutnya, pilih tujuan &apos;Save as PDF&apos; / &apos;Simpan sebagai PDF&apos; lalu Simpan.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportJson}>
