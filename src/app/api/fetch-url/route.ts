@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { assertSafeTarget, fetchValidated } from "@/lib/ssrf"
-import { clientIp, rateLimit } from "@/lib/rate-limit"
+import { clientIp, checkRateLimit } from "@/lib/rate-limit"
 
 // fetch-url only fetches public job postings — no loopback/LAN targets.
 // Validasi lewat resolve DNS (bukan cek string) + redirect manual tervalidasi,
@@ -49,6 +49,40 @@ async function timedFetch(url: string, init: RequestInit, ms: number): Promise<R
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Cap ukuran respons agar tidak OOM/DoS dari upstream raksasa. Pola sama dengan
+// proxy/route.ts: cek content-length dulu, lalu baca bertahap dengan counter
+// agar respons tanpa content-length tetap ikut dibatasi.
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024 // 10 MB
+
+// Baca body respons sebagai teks dengan batas ukuran. Tolak (throw) dengan
+// pesan jelas bila melebihi cap — dipakai semua strategi fetch di file ini
+// (direct, Jina reader, proxy mirror, meta).
+async function readTextWithLimit(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get("content-length") || 0)
+  if (contentLength > maxBytes) {
+    throw new Error(`Respons upstream terlalu besar (content-length ${contentLength} > ${maxBytes} bytes)`)
+  }
+  const reader = response.body?.getReader()
+  if (!reader) {
+    // Body tidak bisa di-stream — fallback text() biasa (kasus langka)
+    return response.text()
+  }
+  const decoder = new TextDecoder()
+  let text = ""
+  let bytes = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytes += value.byteLength
+    if (bytes > maxBytes) {
+      await reader.cancel()
+      throw new Error(`Respons upstream terlalu besar (> ${maxBytes} bytes)`)
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+  return text + decoder.decode()
 }
 
 function htmlToText(html: string): string {
@@ -148,7 +182,7 @@ async function fetchViaReader(url: string): Promise<{ title: string; body: strin
       40_000,
     )
     if (!res.ok) return null
-    const md = await res.text()
+    const md = await readTextWithLimit(res, MAX_RESPONSE_BYTES)
     // Jina sering balas 200 dengan badan berisi "Warning: Target URL returned error ..."
     if (/^Warning:\s*Target URL returned error/im.test(md)) return null
     const title = md.match(/^Title:\s*(.+)$/m)?.[1] || ""
@@ -159,7 +193,9 @@ async function fetchViaReader(url: string): Promise<{ title: string; body: strin
       .trim()
     if (!body || isChallengePage(body)) return null
     return { title, body }
-  } catch {
+  } catch (err: any) {
+    // Log agar oversized/blocked dari reader terdiagnosis (gaya fetchViaProxyHtml)
+    console.warn(`[fetch-url] reader failed for ${url}: ${err?.message ?? err}`)
     return null
   }
 }
@@ -329,7 +365,7 @@ async function fetchViaProxyHtml(url: string): Promise<{ html: string; source: s
         console.warn(`[fetch-url] ${ep.source} content-type ${contentType} for ${url}`)
         continue
       }
-      const html = await res.text()
+      const html = await readTextWithLimit(res, MAX_RESPONSE_BYTES)
       if (!html || html.length < 500 || isChallengePage(htmlToText(html))) {
         console.warn(`[fetch-url] ${ep.source} empty/challenge body (${html.length} chars) for ${url}`)
         continue
@@ -342,12 +378,16 @@ async function fetchViaProxyHtml(url: string): Promise<{ html: string; source: s
   return null
 }
 
+// Batas durasi fungsi (Next.js App Router / Vercel) — rantai strategi fetch
+// bisa lama; tanpa ini function dipenggal platform sesuai default plan.
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   try {
     if (!isSameOrigin(request)) {
       return NextResponse.json({ error: "Cross-origin requests are not allowed" }, { status: 403 })
     }
-    const rl = rateLimit(`fetch-url:${clientIp(request)}`, 20, 60_000)
+    const rl = await checkRateLimit(`fetch-url:${clientIp(request)}`, 20, 60_000)
     if (!rl.ok) {
       return NextResponse.json(
         { error: `Terlalu banyak request, coba lagi dalam ${rl.retryAfterSec} detik` },
@@ -386,7 +426,7 @@ export async function POST(request: NextRequest) {
       if (response.ok) {
         const contentType = response.headers.get("content-type") || ""
         if (/text\/html|text\/plain|application\/xhtml/i.test(contentType) || !contentType) {
-          const html = await response.text()
+          const html = await readTextWithLimit(response, MAX_RESPONSE_BYTES)
           title = extractTitle(html)
           text = htmlToText(html)
           const jsonLd = extractJsonLd(html)
@@ -484,7 +524,7 @@ export async function POST(request: NextRequest) {
           {}
         )
         if (response.ok) {
-          const html = await response.text()
+          const html = await readTextWithLimit(response, MAX_RESPONSE_BYTES)
           const metaDesc = extractMetaDescription(html)
           if (metaDesc && !isChallengePage(metaDesc)) {
             const metaTitle = extractTitle(html)

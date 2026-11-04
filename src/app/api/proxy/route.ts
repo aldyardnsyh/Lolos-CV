@@ -74,26 +74,94 @@ function parseLoose(text: string): any {
 }
 
 import { assertSafeTarget, fetchValidated } from "@/lib/ssrf"
-import { clientIp, rateLimit } from "@/lib/rate-limit"
+import { clientIp, checkRateLimit } from "@/lib/rate-limit"
 
-// Loopback (127.0.0.1, localhost, ::1) is allowed: users run local LLM
+// WHITELIST HEADER (fix temuan audit "open relay"): hanya header ini yang
+// diteruskan ke upstream. Semua header lain dari klien (cookie, x-forwarded-*,
+// host, user-agent, dsb.) dibuang supaya proxy tidak bisa dipakai menyelundup
+// kredensial sesi atau memanipulasi routing hop.
+const FORWARDABLE_HEADERS = new Set([
+  "authorization",
+  "x-api-key",
+  "x-goog-api-key",
+  "anthropic-version",
+  "content-type",
+  "accept",
+])
+
+// Saring objek headers dari klien: ambil hanya key yang ada di whitelist
+// (perbandingan lowercase), nilai non-string diabaikan.
+function filterHeaders(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!raw || typeof raw !== "object") return out
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v !== "string") continue
+    if (FORWARDABLE_HEADERS.has(k.toLowerCase())) out[k] = v
+  }
+  return out
+}
+
+// BODY CAP: tolak request body > 2 MB dengan 413. Mencegah relay dipakai
+// mengirim payload raksasa yang menghabiskan bandwidth/memori fungsi.
+const MAX_BODY_BYTES = 2 * 1024 * 1024
+
+// Allowlist host penyedia AI resmi — diambil PERSIS dari baseUrl PROVIDERS di
+// src/types/index.ts. Host di daftar ini adalah target normal aplikasi (BYOK).
+// Catatan: Cohere di PROVIDERS memakai api.cohere.ai (bukan api.cohere.com).
+const KNOWN_PROVIDER_HOSTS = new Set([
+  "api.openai.com",
+  "api.anthropic.com",
+  "api.deepseek.com",
+  "generativelanguage.googleapis.com",
+  "api.mistral.ai",
+  "api.groq.com",
+  "api.together.xyz",
+  "api.perplexity.ai",
+  "api.cohere.ai",
+  "api.opencode.ai",
+  "opencode.ai", // OpenCode Zen: https://opencode.ai/zen/v1
+])
+
+// ALLOWLIST DENGAN FALLBACK TERDOKUMENTASI:
+// Host di KNOWN_PROVIDER_HOSTS → jalur normal BYOK.
+// Host DI LUAR daftar (custom baseUrl agregator, gateway OpenAI-compatible,
+// Ollama/LM Studio lokal di dev) → tetap DIIZINKAN agar jalur BYOK custom
+// tidak mati, TAPI hanya setelah melewati SEMUA guard existing di handler:
+// same-origin, rate limit KV, SSRF assertSafeTarget (resolve DNS + blokir IP
+// privat), filter header, body cap 2 MB, cap respons 10 MB, timeout upstream.
+// KETERBATASAN: allowlist ketat penuh (host di luar daftar ditolak) butuh
+// sinyal konfigurasi terpercaya dari klien, mis. baseUrl custom terdaftar
+// saat build/deploy — roadmap Fase 2. Untuk kini, host di luar daftar hanya
+// dicatat (observability) sebagai bahan menyempurnakan allowlist.
+function isKnownProviderHost(url: string): boolean {
+  try {
+    return KNOWN_PROVIDER_HOSTS.has(new URL(url).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+// Loopback (127.0.0.1, localhost, ::1) is allowed in DEV: users run local LLM
 // servers (Ollama, LM Studio). Validasi lewat resolve DNS (bukan cek string)
 // agar IP numerik (http://2130706433/), hex, dan DNS rebinding ikut tertangani.
 // Target privat lain (link-local, metadata 169.254.169.254, LAN) tetap diblokir.
+// Di production loopback diblokir (SSRF ke layanan lokal self-hosted/Docker).
+const ALLOW_LOOPBACK = process.env.NODE_ENV !== "production"
 
 // Cap response size to avoid OOM from a malicious/huge upstream response.
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 // Timeout agar upstream yang macet tidak menggantung fungsi (biaya/DoS).
-// 175 dtk selaras dengan timeout klien 180 dtk; platform (Vercel) tetap
-// memenggal sesuai batas durasi fungsinya sendiri.
-const UPSTREAM_TIMEOUT_MS = 175_000
+// 45 dtk selaras dengan timeout klien 50 dtk (LLM_TIMEOUT_MS di api.ts),
+// menyisakan headroom transport; platform (Vercel) tetap memenggal sesuai
+// batas durasi fungsinya sendiri (maxDuration di bawah).
+const UPSTREAM_TIMEOUT_MS = 45_000
 
 async function forward(url: string, init: RequestInit) {
   const response = await fetchValidated(
     url,
     { ...init, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
-    { allowLoopback: true }
+    { allowLoopback: ALLOW_LOOPBACK }
   )
   const contentLength = Number(response.headers.get("content-length") || 0)
   if (contentLength > MAX_RESPONSE_BYTES) {
@@ -141,12 +209,16 @@ function respond(response: Response, parsed: any) {
   })
 }
 
+// Batas durasi fungsi (Next.js App Router / Vercel) — tanpa ini function
+// dipenggal platform sesuai default plan, klien terima 500 tanpa penjelasan.
+export const maxDuration = 60
+
 export async function POST(request: NextRequest) {
   try {
     if (!isSameOrigin(request)) {
       return NextResponse.json({ error: "Cross-origin requests are not allowed" }, { status: 403 })
     }
-    const rl = rateLimit(`proxy:${clientIp(request)}`, 60, 60_000)
+    const rl = await checkRateLimit(`proxy:${clientIp(request)}`, 60, 60_000)
     if (!rl.ok) {
       return NextResponse.json(
         { error: `Terlalu banyak request, coba lagi dalam ${rl.retryAfterSec} detik` },
@@ -157,16 +229,38 @@ export async function POST(request: NextRequest) {
     if (typeof url !== "string" || !url.trim()) {
       return NextResponse.json({ error: "Missing url parameter" }, { status: 400 })
     }
+    // METHOD RESTRICTION: hanya GET dan POST; method lain (PUT/DELETE/PATCH/
+    // CONNECT/...) ditolak 405.
+    if (method !== undefined && method !== "GET" && method !== "POST") {
+      return NextResponse.json(
+        { error: "Method tidak didukung. Gunakan GET atau POST." },
+        { status: 405 }
+      )
+    }
+    // BODY CAP: tolak body > 2 MB dengan 413.
+    const bodyJson =
+      method === "GET" || body === undefined ? undefined : JSON.stringify(body)
+    if (bodyJson && new TextEncoder().encode(bodyJson).length > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: "Body terlalu besar (maksimal 2 MB)" }, { status: 413 })
+    }
+    // ALLOWLIST: host penyedia dikenal → jalur BYOK normal. Host di luar
+    // daftar (BYOK custom) TETAP DIIZINKAN lewat semua guard di bawah; hanya
+    // dicatat untuk evaluasi allowlist Fase 2.
+    if (!isKnownProviderHost(url)) {
+      try {
+        console.info(`[proxy] target di luar allowlist provider: ${new URL(url).hostname}`)
+      } catch {}
+    }
     try {
-      await assertSafeTarget(url, { allowLoopback: true })
+      await assertSafeTarget(url, { allowLoopback: ALLOW_LOOPBACK })
     } catch (e: any) {
       return NextResponse.json({ error: e?.message || "URL target tidak diizinkan" }, { status: 400 })
     }
     const httpMethod = method === "GET" ? "GET" : "POST"
     const { response, parsed } = await forward(url, {
       method: httpMethod,
-      headers,
-      body: httpMethod === "GET" ? undefined : JSON.stringify(body),
+      headers: filterHeaders(headers),
+      body: bodyJson,
     })
     return respond(response, parsed)
   } catch (error: any) {
