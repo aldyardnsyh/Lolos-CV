@@ -315,6 +315,15 @@ function normalizeHiddenSections(v: unknown): ResumeSectionId[] {
 // Dipakai hanya sebagai indikator overflow / garis batas halaman (tanpa zoom).
 const A4_CONTENT_PX = 1047
 
+function ItemMoveButtons({ onUp, onDown, upDisabled, downDisabled, label }: { onUp: () => void; onDown: () => void; upDisabled: boolean; downDisabled: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      <button onClick={onUp} disabled={upDisabled} title="Pindah ke atas" aria-label={`Pindah ${label} ke atas`} className="p-2.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"><ArrowUp className="w-4 h-4" /></button>
+      <button onClick={onDown} disabled={downDisabled} title="Pindah ke bawah" aria-label={`Pindah ${label} ke bawah`} className="p-2.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"><ArrowDown className="w-4 h-4" /></button>
+    </div>
+  )
+}
+
 function SectionCard({
   title, icon: Icon, color, children, defaultOpen = true, open: openProp, onOpenChange,
 }: {
@@ -681,6 +690,23 @@ export function ResumeBuilder() {
       return next
     })
   }
+
+  const moveResumeListItem = <T,>(list: T[], index: number, dir: -1 | 1): T[] => {
+    const j = index + dir
+    if (index < 0 || j < 0 || j >= list.length) return list
+    const next = [...list]
+    const tmp = next[index]; next[index] = next[j]; next[j] = tmp
+    return next
+  }
+  const moveExperience = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, experiences: moveResumeListItem(prev.experiences, index, dir) }))
+  const moveOrganization = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, organizations: moveResumeListItem(prev.organizations ?? [], index, dir) }))
+  const moveResearch = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, research: moveResumeListItem(prev.research ?? [], index, dir) }))
+  const moveProject = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, projects: moveResumeListItem(prev.projects, index, dir) }))
+  const moveEducation = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, education: moveResumeListItem(prev.education, index, dir) }))
+  const moveSkillGroup = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, skillGroups: moveResumeListItem(prev.skillGroups ?? [], index, dir) }))
+  const moveAward = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, awards: moveResumeListItem(prev.awards ?? [], index, dir) }))
+  const moveCertification = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, certifications: moveResumeListItem(prev.certifications ?? [], index, dir) }))
+  const moveLanguage = (index: number, dir: -1 | 1) => setResume((prev) => ({ ...prev, languages: moveResumeListItem(prev.languages, index, dir) }))
 
   const toggleSection = (id: ResumeSectionId) => {
     setHiddenSections((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -1480,7 +1506,7 @@ export function ResumeBuilder() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-24 lg:pb-0">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto lg:pr-2 lg:pb-8">
             <h3 className="text-lg font-bold px-1">{preview ? "Preview CV" : "Edit CV"}</h3>
             {/* T8/T10b: chip autosave + progress pengisian. Posisi di atas form
                 supaya terlihat di mobile sebelum user scroll jauh. */}
@@ -2729,7 +2755,8 @@ export function ResumeBuilder() {
                                   {resumeLang === "en" ? "Optimize" : "Optimasi"}
                                 </Button>
                               </div>
-                              <div className="flex justify-end mt-3">
+                              <div className="flex items-center justify-between mt-3">
+                                <ItemMoveButtons onUp={() => moveExperience(i, -1)} onDown={() => moveExperience(i, 1)} upDisabled={i === 0} downDisabled={i === resume.experiences.length - 1} label={resumeLang === "en" ? "Experience" : "Pengalaman"} />
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeExperience(exp.id)}>
                                   <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                 </Button>
@@ -2805,7 +2832,8 @@ export function ResumeBuilder() {
                                   onChange={(e) => updateOrganization(org.id, "description", e.target.value)}
                                 />
                               </div>
-                              <div className="flex justify-end mt-3">
+                              <div className="flex items-center justify-between mt-3">
+                                <ItemMoveButtons onUp={() => moveOrganization(i, -1)} onDown={() => moveOrganization(i, 1)} upDisabled={i === 0} downDisabled={i === (resume.organizations ?? []).length - 1} label={resumeLang === "en" ? "Organization" : "Organisasi"} />
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeOrganization(org.id)}>
                                   <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                 </Button>
@@ -2887,7 +2915,8 @@ export function ResumeBuilder() {
                                   />
                                 </div>
                               </div>
-                              <div className="flex justify-end mt-3">
+                              <div className="flex items-center justify-between mt-3">
+                                <ItemMoveButtons onUp={() => moveResearch(i, -1)} onDown={() => moveResearch(i, 1)} upDisabled={i === 0} downDisabled={i === (resume.research ?? []).length - 1} label={resumeLang === "en" ? "Research" : "Riset"} />
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeResearch(rs.id)}>
                                   <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                 </Button>
@@ -2953,7 +2982,8 @@ export function ResumeBuilder() {
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex justify-end mt-3">
+                              <div className="flex items-center justify-between mt-3">
+                                <ItemMoveButtons onUp={() => moveProject(i, -1)} onDown={() => moveProject(i, 1)} upDisabled={i === 0} downDisabled={i === resume.projects.length - 1} label={resumeLang === "en" ? "Project" : "Proyek"} />
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeProject(proj.id)}>
                                   <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                 </Button>
@@ -3054,7 +3084,8 @@ export function ResumeBuilder() {
                                   </div>
 </div>
                               )}
-                              <div className="flex justify-end mt-3">
+                              <div className="flex items-center justify-between mt-3">
+                                <ItemMoveButtons onUp={() => moveEducation(i, -1)} onDown={() => moveEducation(i, 1)} upDisabled={i === 0} downDisabled={i === resume.education.length - 1} label={resumeLang === "en" ? "Education" : "Pendidikan"} />
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeEducation(edu.id)}>
                                   <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                 </Button>
@@ -3114,7 +3145,8 @@ export function ResumeBuilder() {
                                   </div>
                                 )}
                               </div>
-                              <div className="flex justify-end mt-3">
+                              <div className="flex items-center justify-between mt-3">
+                                <ItemMoveButtons onUp={() => moveSkillGroup(i, -1)} onDown={() => moveSkillGroup(i, 1)} upDisabled={i === 0} downDisabled={i === (resume.skillGroups ?? []).length - 1} label={resumeLang === "en" ? "Skill group" : "Grup skill"} />
                                 <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeSkillGroup(g.id)}>
                                   <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                 </Button>
@@ -3175,7 +3207,8 @@ export function ResumeBuilder() {
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="flex justify-end mt-2">
+                                  <div className="flex items-center justify-between mt-2">
+                                    <ItemMoveButtons onUp={() => moveAward(i, -1)} onDown={() => moveAward(i, 1)} upDisabled={i === 0} downDisabled={i === (resume.awards ?? []).length - 1} label={resumeLang === "en" ? "Award" : "Penghargaan"} />
                                     <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 gap-2" onClick={() => removeAwardItem(a.id)}>
                                       <Trash2 className="w-4 h-4" />{resumeLang === "en" ? "Remove" : "Hapus"}
                                     </Button>
@@ -3193,12 +3226,13 @@ export function ResumeBuilder() {
                             {resumeLang === "en" ? "Certifications (one line)" : "Sertifikasi (satu baris)"}
                           </p>
                           {(resume.certifications ?? []).length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
+                            <div className="space-y-2">
                               {(resume.certifications ?? []).map((cert, i) => (
-                                <Badge key={i} variant="secondary" className="gap-1 px-3 py-1.5 cursor-pointer hover:bg-destructive/20 hover:text-destructive transition-colors group" onClick={() => removeCertification(i)}>
-                                  {cert}
-                                  <span className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">&times;</span>
-                                </Badge>
+                                <div key={i} className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-2">
+                                  <span className="flex-1 min-w-0 truncate text-sm">{cert}</span>
+                                  <ItemMoveButtons onUp={() => moveCertification(i, -1)} onDown={() => moveCertification(i, 1)} upDisabled={i === 0} downDisabled={i === (resume.certifications ?? []).length - 1} label={resumeLang === "en" ? "Certification" : "Sertifikasi"} />
+                                  <button onClick={() => removeCertification(i)} title={resumeLang === "en" ? "Remove" : "Hapus"} aria-label={(resumeLang === "en" ? "Remove certification: " : "Hapus sertifikasi: ") + cert} className="p-2.5 rounded-md text-red-500 hover:text-red-600 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                                </div>
                               ))}
                             </div>
                           ) : (
@@ -3223,14 +3257,15 @@ export function ResumeBuilder() {
                     <SectionCard key={sid} open={isSectionCardOpen(sid, false)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Languages} color="bg-pink-500" defaultOpen={false}>
                       <div className="space-y-3">
                         {resume.languages.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="space-y-2">
                             {resume.languages.map((lang, i) => (
-                              <Badge key={i} variant="secondary" className="gap-1 px-3 py-1.5 cursor-pointer hover:bg-destructive/20 hover:text-destructive transition-colors group" onClick={() => removeLanguage(i)}>
-                                {lang}
-                                <span className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity">&times;</span>
-                              </Badge>
+                              <div key={i} className="flex items-center gap-2 rounded-lg border border-border/50 px-3 py-2">
+                                <span className="flex-1 min-w-0 truncate text-sm">{lang}</span>
+                                <ItemMoveButtons onUp={() => moveLanguage(i, -1)} onDown={() => moveLanguage(i, 1)} upDisabled={i === 0} downDisabled={i === resume.languages.length - 1} label={resumeLang === "en" ? "Language" : "Bahasa"} />
+                                <button onClick={() => removeLanguage(i)} title={resumeLang === "en" ? "Remove" : "Hapus"} aria-label={(resumeLang === "en" ? "Remove language: " : "Hapus bahasa: ") + lang} className="p-2.5 rounded-md text-red-500 hover:text-red-600 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                              </div>
                             ))}
-                          </div>
+                            </div>
                         ) : (
                           <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No languages yet." : "Belum ada bahasa."}</p>
                         )}
@@ -3254,8 +3289,8 @@ export function ResumeBuilder() {
             )}
           </div>
 
-          <div className="space-y-6">
-            <div className="sticky top-24">
+          <div className="space-y-6 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto lg:pb-8">
+            <div className="sticky top-24 lg:static">
               {/* T8/T10b: chip autosave + progress juga di sidebar. */}
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
