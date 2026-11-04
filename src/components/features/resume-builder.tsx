@@ -1498,7 +1498,7 @@ export function ResumeBuilder() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-24 lg:pb-0">
-          <div className="lg:col-span-2 space-y-6 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto lg:pr-2 lg:pb-8">
+          <div className="lg:col-span-2 space-y-6">
             <h3 className="text-lg font-bold px-1">{preview ? "Preview CV" : "Edit CV"}</h3>
             {/* T8/T10b: chip autosave + progress pengisian. Posisi di atas form
                 supaya terlihat di mobile sebelum user scroll jauh. */}
@@ -3281,8 +3281,8 @@ export function ResumeBuilder() {
             )}
           </div>
 
-          <div className="space-y-6 lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto lg:pb-8">
-            <div className="sticky top-24 lg:static">
+          <div className="space-y-6">
+            <div className="sticky top-24">
               {/* T8/T10b: chip autosave + progress juga di sidebar. */}
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
