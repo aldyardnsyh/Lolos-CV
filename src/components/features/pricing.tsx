@@ -1,21 +1,23 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Check, Sparkles, Heart, Copy, CheckCircle2, Trophy, ExternalLink } from "lucide-react"
+import Image from "next/image"
+import { Check, Sparkles, Heart, Copy, CheckCircle2, Trophy, ExternalLink, QrCode, ChevronDown } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
 const freeFeatures = [
   "Semua template CV (ATS Classic, ATS + Foto, Creative, Modern Minimal)",
-  "Analisis lowongan tanpa batas",
-  "Penulisan & optimasi konten",
-  "ATS score check",
-  "Export PDF",
+  "Analisis lowongan tanpa kuota harian",
+  "Penulisan dan optimasi konten",
+  "Cek kecocokan kata kunci",
+  "Unduh PDF tanpa watermark",
   "Tidak ada masa percobaan",
 ]
 
 const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
 const SAWERIA_USERNAME = "pogungsoftwarehouse"
+const QRIS_IMAGE = "/qris-donasi.jpg"
 
 interface Donor {
   rank: number
@@ -23,10 +25,15 @@ interface Donor {
   amount: number
 }
 
-const MEDALS = ["🥇", "🥈", "🥉"]
+const RANK_STYLES = [
+  "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+  "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700",
+  "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800",
+]
 
 export function Pricing() {
   const [copied, setCopied] = useState(false)
+  const [showQris, setShowQris] = useState(false)
   const [donors, setDonors] = useState<Donor[]>([])
   const [totalDonation, setTotalDonation] = useState(0)
   const [loadingDonors, setLoadingDonors] = useState(true)
@@ -80,7 +87,7 @@ export function Pricing() {
                 <div className="flex justify-center mb-3">
                   <Badge className="px-4 py-1 gap-1 bg-primary text-white border-0 shadow-lg">
                     <Sparkles className="w-3 h-3" />
-                    Tanpa Batas Fitur
+                    Semua Fitur Terbuka
                   </Badge>
                 </div>
                 <div>
@@ -171,8 +178,53 @@ export function Pricing() {
                     </button>
                   </div>
                 </div>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowQris((v) => !v)}
+                    aria-expanded={showQris}
+                    aria-controls="qris-panel"
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <QrCode className="w-4 h-4 text-primary" />
+                      Donasi via QRIS
+                    </span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showQris ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {showQris && (
+                    <div id="qris-panel" className="mt-3 rounded-xl border border-border bg-card p-3">
+                      <Image
+                        src={QRIS_IMAGE}
+                        alt="Kode QRIS untuk donasi ke pengembang LolosCV"
+                        width={908}
+                        height={1280}
+                        sizes="260px"
+                        className="mx-auto h-auto w-full max-w-[260px] rounded-lg"
+                      />
+                      <p className="mt-3 text-[11px] text-muted-foreground leading-relaxed text-center">
+                        Scan pakai m-banking atau e-wallet yang mendukung QRIS (GoPay, OVO, DANA, ShopeePay, dan bank).
+                        Nominal bebas, tidak ada minimum.
+                      </p>
+                      <p className="mt-2 text-[11px] text-muted-foreground leading-relaxed text-center">
+                        Di aplikasi pembayaran, nama merchant yang muncul:
+                        <span className="font-medium text-foreground"> BANGUN RESUME ID</span>. Pastikan namanya sama
+                        sebelum kamu bayar.
+                      </p>
+                      <a
+                        href={QRIS_IMAGE}
+                        download="qris-loloscv.jpg"
+                        className="mt-2 flex items-center justify-center gap-1.5 text-[11px] font-medium text-primary hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Unduh gambar QRIS
+                      </a>
+                    </div>
+                  )}
+                </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Bisa via QRIS, GoPay, OVO, DANA, dan bank. Leaderboard terupdate otomatis setelah donasi masuk — tanpa verifikasi manual.
+                  Leaderboard diperbarui otomatis dari Saweria. Donasi QRIS tetap tercatat manual oleh pengelola.
                 </p>
               </CardContent>
             </Card>
@@ -222,8 +274,14 @@ export function Pricing() {
                       key={d.rank}
                       className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${d.rank === 1 ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-muted/40 border-border/50"}`}
                     >
-                      <span className="w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold shrink-0 bg-card border border-border shadow-sm">
-                        {d.rank <= 3 ? MEDALS[d.rank - 1] : d.rank}
+                      <span
+                        className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold shrink-0 border shadow-sm ${
+                          d.rank <= 3
+                            ? RANK_STYLES[d.rank - 1]
+                            : "bg-card border-border text-muted-foreground"
+                        }`}
+                      >
+                        {d.rank}
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate">{d.name}</p>

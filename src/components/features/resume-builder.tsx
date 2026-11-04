@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
+import Image from "next/image"
 
 import {
   FileText, Plus, Trash2, Download, Sparkles, Loader2, Eye, Edit3,
   ChevronDown, ChevronUp, User, Users, Briefcase, GraduationCap, Wrench,
   Globe, Award, Languages, CheckCircle2, AlertCircle, Upload, Wand2,
-  EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X,
+  EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X, QrCode,
   LayoutTemplate, Type, ALargeSmall, FlaskConical, Save, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -392,6 +393,7 @@ export function ResumeBuilder() {
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
   const [preGenerate, setPreGenerate] = useState<ResumeData | null>(null)
   const [showSupportPrompt, setShowSupportPrompt] = useState(false)
+  const [showQrisInPrompt, setShowQrisInPrompt] = useState(false)
   // Guard data contoh sebelum print (T9) + konfirmasi hapus semua data (T7).
   const [showPlaceholderWarning, setShowPlaceholderWarning] = useState(false)
   const [showWipeConfirm, setShowWipeConfirm] = useState(false)
@@ -597,7 +599,7 @@ export function ResumeBuilder() {
         const now = Date.now()
         if (now - lastStorageWarnRef.current > 10_000) {
           lastStorageWarnRef.current = now
-          showToast("Penyimpanan browser penuh (biasanya karena foto). Data terbaru TIDAK tersimpan — unduh atau simpan data CV-mu!", "error")
+          showToast("Penyimpanan browser penuh (biasanya karena foto). Data terbaru TIDAK tersimpan. Unduh atau simpan data CV-mu sekarang.", "error")
         }
       }
     }, 500)
@@ -1103,6 +1105,7 @@ export function ResumeBuilder() {
       // dialog print sudah selesai (user sudah cetak/simpan/batal). Modal
       // donasi sekarang muncul DI SINI, sekali, bukan menyela sebelum print.
       if (safeLocalGet("donation_modal_dismissed") !== "1") {
+        setShowQrisInPrompt(false)
         setShowSupportPrompt(true)
       }
 
@@ -1330,8 +1333,8 @@ export function ResumeBuilder() {
             </h3>
             <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
               {resumeLang === "en"
-                ? "LolosCV is free. A small donation keeps the servers running — totally optional."
-                : "LolosCV gratis. Donasi kecil bikin server tetap jalan — sepenuhnya opsional."}
+                ? "LolosCV is free. A small donation keeps the servers running. Completely optional."
+                : "LolosCV gratis. Donasi kecil membantu biaya server, sepenuhnya opsional."}
             </p>
             <div className="flex flex-col gap-2 mt-5">
               <Button
@@ -1346,6 +1349,33 @@ export function ResumeBuilder() {
                 {resumeLang === "en" ? "Donate via Saweria" : "Donasi via Saweria"}
                 <ExternalLink className="w-3.5 h-3.5 opacity-70" />
               </Button>
+              <button
+                type="button"
+                onClick={() => setShowQrisInPrompt((v) => !v)}
+                aria-expanded={showQrisInPrompt}
+                aria-controls="qris-prompt-panel"
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-accent transition-colors"
+              >
+                <QrCode className="w-4 h-4 text-primary" />
+                {resumeLang === "en" ? "Donate via QRIS" : "Donasi via QRIS"}
+              </button>
+              {showQrisInPrompt && (
+                <div id="qris-prompt-panel" className="rounded-xl border border-border bg-background p-3">
+                  <Image
+                    src="/qris-donasi.jpg"
+                    alt="Kode QRIS untuk donasi ke pengembang LolosCV"
+                    width={908}
+                    height={1280}
+                    sizes="220px"
+                    className="mx-auto h-auto w-full max-w-[220px] rounded-lg"
+                  />
+                  <p className="mt-2 text-[11px] text-muted-foreground text-center leading-relaxed">
+                    {resumeLang === "en"
+                      ? "Scan with any QRIS-enabled banking or e-wallet app."
+                      : "Scan pakai m-banking atau e-wallet yang mendukung QRIS."}
+                  </p>
+                </div>
+              )}
               <Button
                 variant="outline"
                 className="w-full"
@@ -1659,11 +1689,11 @@ export function ResumeBuilder() {
                     <p className="text-center text-[10px] text-muted-foreground mb-2 print:hidden">
                       {compactOnePage
                         ? (resumeLang === "en"
-                          ? `About ${estPages} pages — will be compacted to ${compactPct}% on download`
-                          : `Sekitar ${estPages} halaman — otomatis dipadatkan ${compactPct}% saat download`)
+                          ? `About ${estPages} pages, compacted to ${compactPct}% on download`
+                          : `Sekitar ${estPages} halaman, dipadatkan menjadi ${compactPct}% saat diunduh`)
                         : (resumeLang === "en"
-                          ? `About ${estPages} pages — downloads as ${estPages} pages`
-                          : `Sekitar ${estPages} halaman — terdownload ${estPages} halaman`)}
+                          ? `About ${estPages} pages, downloaded as ${estPages} pages`
+                          : `Sekitar ${estPages} halaman, terunduh ${estPages} halaman`)}
                     </p>
                   )}
                   {/* ATS CLASSIC - single column, black & white, bullet points */}
@@ -2891,7 +2921,7 @@ export function ResumeBuilder() {
                                     id={`rs-${i}-description`}
                                     onInput={autoGrowTextarea}
                                     className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
-                                    placeholder={resumeLang === "en" ? "Contributions, methods, results — one per line..." : "Kontribusi, metode, hasil — satu per baris..."}
+                                    placeholder={resumeLang === "en" ? "Contributions, methods, results. One per line." : "Kontribusi, metode, hasil. Satu per baris."}
                                     value={rs.description}
                                     onChange={(e) => updateResearch(rs.id, "description", e.target.value)}
                                   />
@@ -3172,7 +3202,7 @@ export function ResumeBuilder() {
                                             onChange={(e) => updateAwardItem(a.id, "month", e.target.value)}
                                             className="w-full h-10 rounded-xl border-2 border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors cursor-pointer"
                                           >
-                                            <option value="">—</option>
+                                            <option value="">-</option>
                                             {(resumeLang === "en" ? MONTH_SHORT_EN : MONTH_SHORT_ID).map((m, i) => (
                                               <option key={i + 1} value={String(i + 1).padStart(2, "0")}>{m}</option>
                                             ))}

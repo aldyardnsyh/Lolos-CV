@@ -17,3 +17,5 @@ devserver.log
 # File pribadi (CV contoh, QRIS) — jangan push data personal
 CV_ATS_*
 QRIS*
+# Pengecualian: kartu QRIS donasi yang memang dipublikasikan di situs
+!public/qris-donasi.jpg
