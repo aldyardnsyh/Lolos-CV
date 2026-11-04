@@ -290,7 +290,7 @@ function localUnreachableError(url: string): Error {
   try { origin = new URL(url).origin } catch {}
   return new Error(
     "Server lokal tidak terjangkau dari browser." +
-    (origin ? ` Tes cepat: buka ${origin} langsung di address bar — kalau tidak tampil, servernya belum jalan.` : "") +
+    (origin ? ` Tes cepat: buka ${origin} langsung di address bar. Kalau tidak tampil, servernya belum jalan.` : "") +
     " Kalau terbuka tapi app tetap gagal, berarti browser diblokir CORS: aktifkan CORS di 9Router/Ollama" +
     (!isLocalAppHost() ? " (wajib aktif karena app dibuka dari versi deploy, bukan localhost)" : "") + "."
   )
@@ -369,7 +369,7 @@ async function proxyFetch(
         const bodyText = await proxyRes.text().catch(() => "")
         if (isPlatformTimeoutFailure(proxyRes.status, bodyText)) {
           throw new Error(
-            `Proxy error: ${proxyRes.status} — server terpotong batas waktu platform (bukan error sementara). ` +
+            `Proxy error: ${proxyRes.status}. Server terpotong batas waktu platform (bukan error sementara). ` +
             `Coba sekali lagi manual, atau ringkas konten / pakai model yang lebih cepat.`
           )
         }

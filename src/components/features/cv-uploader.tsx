@@ -172,7 +172,7 @@ export function CVUploader({ onApply, onClose }: CVUploaderProps) {
                 Butuh Mesin AI untuk Membaca Isi CV
               </p>
               <p className="text-xs text-blue-700 dark:text-blue-300 mt-1 leading-relaxed">
-                Data dasar berhasil dibaca dari PDF-mu. Untuk melengkapi secara otomatis, aktifkan Mesin AI (10 menit, ada panduan) — atau lanjut isi manual, gratis.
+                Data dasar berhasil dibaca dari PDF-mu. Untuk melengkapi secara otomatis, aktifkan Mesin AI (10 menit, ada panduan) atau lanjut isi manual, gratis.
               </p>
             </div>
           </div>

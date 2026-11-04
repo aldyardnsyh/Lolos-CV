@@ -42,7 +42,7 @@ export function Hero() {
             <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 dark:bg-primary/20 px-4 py-3 pr-10 sm:pr-12">
               <div className="flex-1 min-w-0 text-left">
                 <p className="text-sm sm:text-[15px] leading-relaxed text-foreground">
-                  🎯 Lagi siap daftar <span className="font-semibold">Magang Kemnaker Batch 3</span>? Bikin CV yang benar-benar dibaca — gratis, tanpa akun, langsung dari HP.
+                  Lagi siap daftar <span className="font-semibold">Magang Kemnaker Batch 3</span>? Bikin CV yang benar-benar dibaca, gratis, tanpa akun, langsung dari HP.
                 </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Info resmi pendaftaran:{" "}
@@ -88,7 +88,7 @@ export function Hero() {
           </h1>
 
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-up">
-            Tempel link lowongan dari LinkedIn, JobStreet, atau Glints — LolosCV
+            Tempel link lowongan dari LinkedIn, JobStreet, atau Glints. LolosCV
             bantu susun CV yang menjawab kebutuhan lowongan itu. Semua fitur
             utama gratis Rp 0, tanpa daftar akun, unduh PDF tanpa watermark.
             Fitur AI opsional pakai kunci milikmu sendiri, ada panduannya, atau
@@ -128,9 +128,9 @@ export function Hero() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-2xl mx-auto animate-fade-up">
             {[
-              { icon: FileText, label: "CV Sesuai Lowongan", desc: "Bukan template generic" },
-              { icon: Target, label: "Analisis Otomatis", desc: "Key point terdeteksi" },
-              { icon: TrendingUp, label: "Skor ATS Tertarget", desc: "Fokus yang diminta HRD" },
+              { icon: FileText, label: "CV Sesuai Lowongan", desc: "Bukan template kosong" },
+              { icon: Target, label: "Analisis Otomatis", desc: "Poin penting terdeteksi" },
+              { icon: TrendingUp, label: "Cek Kecocokan", desc: "Fokus pada yang diminta HRD" },
             ].map((item) => (
               <div key={item.label} className="flex items-start gap-3 p-4 rounded-2xl bg-card/50 backdrop-blur-sm border border-border/50">
                 <div className="p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
