@@ -7,7 +7,7 @@ import {
   pruneDonations,
   MAX_AMOUNT,
 } from "@/lib/donations-store"
-import { clientIp, rateLimit } from "@/lib/rate-limit"
+import { clientIp, checkRateLimit } from "@/lib/rate-limit"
 
 // Leaderboard donasi — terisi OTOMATIS dari webhook Saweria
 // (/api/saweria-webhook, status "verified") + form manual (status "pending"
@@ -17,6 +17,15 @@ import { clientIp, rateLimit } from "@/lib/rate-limit"
 // GET /api/donations?admin=true&token=xxx — semua pending
 export async function GET(request: NextRequest) {
   try {
+    // Rate limit ringan (30/menit per IP) — endpoint publik yang membaca KV;
+    // mencegah scraping berat leaderboard menghabiskan koneksi KV.
+    const rl = await checkRateLimit(`donations-get:${clientIp(request)}`, 30, 60_000)
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: `Terlalu banyak permintaan, coba lagi dalam ${rl.retryAfterSec} detik` },
+        { status: 429 }
+      )
+    }
     const isAdmin = request.nextUrl.searchParams.get("admin") === "true"
     const token = request.nextUrl.searchParams.get("token") || ""
     const donations = await listDonations()
@@ -82,12 +91,21 @@ export async function POST(request: NextRequest) {
       if (idx === -1) return NextResponse.json({ error: "Donasi tidak ditemukan" }, { status: 404 })
 
       donations[idx].status = "verified"
-      await saveDonations(donations)
+      try {
+        await saveDonations(donations)
+      } catch (persistErr: any) {
+        // Persist gagal → jujur 500 (jangan senyap; fix temuan audit).
+        console.error("[donations] Gagal persist verifikasi:", persistErr?.message || persistErr)
+        return NextResponse.json(
+          { error: "Gagal menyimpan verifikasi ke storage" },
+          { status: 500 }
+        )
+      }
       return NextResponse.json({ ok: true, name: donations[idx].name })
     }
 
-    // Submit nama baru (pending). Rate limit anti-spam KV.
-    const rl = rateLimit(`donations:${clientIp(request)}`, 10, 60_000)
+    // Submit nama baru (pending). Rate limit anti-spam (KV terdistribusi).
+    const rl = await checkRateLimit(`donations:${clientIp(request)}`, 10, 60_000)
     if (!rl.ok) {
       return NextResponse.json(
         { error: `Terlalu banyak percobaan, coba lagi dalam ${rl.retryAfterSec} detik` },
@@ -112,7 +130,13 @@ export async function POST(request: NextRequest) {
       source: "manual" as const,
     }
     donations.push(donation)
-    await saveDonations(pruneDonations(donations))
+    try {
+      await saveDonations(pruneDonations(donations))
+    } catch (persistErr: any) {
+      // Persist gagal → jujur 500 (jangan senyap; fix temuan audit).
+      console.error("[donations] Gagal persist submit:", persistErr?.message || persistErr)
+      return NextResponse.json({ error: "Gagal menyimpan donasi ke storage" }, { status: 500 })
+    }
 
     return NextResponse.json({ ok: true, id: donation.id, name: donation.name })
   } catch (e: any) {
@@ -137,7 +161,13 @@ export async function DELETE(request: NextRequest) {
     if (idx === -1) return NextResponse.json({ error: "Donasi tidak ditemukan" }, { status: 404 })
 
     const [removed] = donations.splice(idx, 1)
-    await saveDonations(donations)
+    try {
+      await saveDonations(donations)
+    } catch (persistErr: any) {
+      // Persist gagal → jujur 500 (jangan senyap; fix temuan audit).
+      console.error("[donations] Gagal persist hapus:", persistErr?.message || persistErr)
+      return NextResponse.json({ error: "Gagal menghapus donasi di storage" }, { status: 500 })
+    }
     return NextResponse.json({ ok: true, name: removed.name })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Gagal menghapus" }, { status: 500 })
