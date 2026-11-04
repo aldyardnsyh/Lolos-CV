@@ -151,8 +151,9 @@ html {
     background: white !important;
     height: auto !important;
     overflow: visible !important;
+    color-scheme: light;
   }
-  body > *:not(#resume-print-clone) {
+  body > *:not(#resume-print-clone):not(#cover-letter-print) {
     display: none !important;
   }
   #resume-print-clone {
@@ -166,8 +167,58 @@ html {
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
+    color-scheme: light;
+    /* Fix print dark mode: paksa seluruh variabel tema ke nilai LIGHT agar
+       template yang memakai warna tema (Creative/Modern) tidak tercetak
+       sebagai teks putih di kertas putih. Nilai = salinan :root. */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 211 57% 21%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 100% 95%;
+    --accent-foreground: 214 95% 38%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 211 57% 21%;
   }
   #resume-print-clone * {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  /* Print surat lamaran: pola sama dengan #resume-print-clone (clone node di-
+     append ke body oleh cover-letter.tsx). Format surat resmi: serif, 12px,
+     hitam di atas putih, tanpa warna (ATS-safe). */
+  #cover-letter-print {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    color: #111111 !important;
+    color-scheme: light;
+    font-family: "Times New Roman", Times, serif !important;
+    font-size: 12px !important;
+    line-height: 1.6 !important;
+  }
+  #cover-letter-print * {
+    color: #111111 !important;
+    background: transparent !important;
     box-shadow: none !important;
     border-radius: 0 !important;
   }

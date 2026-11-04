@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 const templates = [
   {
     name: "ATS Classic",
+    key: "corporate",
     description: "Single column, clean, dan mudah dibaca mesin ATS. Paling aman untuk melamar ke perusahaan besar.",
     color: "bg-blue-600",
     borderColor: "border-blue-500/30",
@@ -16,6 +17,7 @@ const templates = [
   },
   {
     name: "ATS + Foto",
+    key: "professional",
     description: "Tata letak satu kolom yang tetap ATS-friendly, dengan tempat foto di kiri atas.",
     color: "bg-slate-700",
     borderColor: "border-slate-500/30",
@@ -24,6 +26,7 @@ const templates = [
   },
   {
     name: "Creative",
+    key: "creative",
     description: "Blok warna penuh, skill tags, dan gaya tebal untuk industri kreatif seperti design dan media.",
     color: "bg-purple-600",
     borderColor: "border-purple-500/30",
@@ -32,6 +35,7 @@ const templates = [
   },
   {
     name: "Modern Minimal",
+    key: "modern",
     description: "Pengalaman kerja dengan timeline dan tipografi bersih. Cocok untuk startup dan teknologi.",
     color: "bg-emerald-600",
     borderColor: "border-emerald-500/30",
@@ -111,7 +115,11 @@ export function Templates() {
                 <Button
                   variant="outline"
                   className="w-full mt-2"
-                  onClick={() => scrollTo("builder")}
+                  onClick={() => {
+                    // Terapkan template ke builder lewat event, lalu scroll.
+                    window.dispatchEvent(new CustomEvent("use_template", { detail: { template: template.key } }))
+                    scrollTo("builder")
+                  }}
                 >
                   Gunakan Template
                 </Button>

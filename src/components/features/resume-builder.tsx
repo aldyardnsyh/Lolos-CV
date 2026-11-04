@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronUp, User, Users, Briefcase, GraduationCap, Wrench,
   Globe, Award, Languages, CheckCircle2, AlertCircle, Upload, Wand2,
   EyeOff, RotateCcw, ArrowUp, ArrowDown, AlertTriangle, Heart, ExternalLink, X,
-  LayoutTemplate, Type, ALargeSmall, FlaskConical,
+  LayoutTemplate, Type, ALargeSmall, FlaskConical, Save, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,9 @@ import { cn, formatResumeDate, isSafePhotoSrc } from "@/lib/utils"
 import { generateResumeContent, generateSummary, generateSampleResume, translateResume, getApiConfig, safeLocalGet, safeLocalSet, normalizeResumeData } from "@/lib/api"
 import { buildMockSampleResume } from "@/lib/sample-mock"
 import { useSampleGenerating } from "@/lib/sample-generation"
+import {
+  compressImageFile, buildResumeFile, downloadResumeFile, parseResumeFile, clearAppStorage,
+} from "@/lib/resume-file"
 import { CVUploader } from "@/components/features/cv-uploader"
 import type { ResumeData, ResumeTemplate, ResumeExperience, ResumeEducation, ResumeSkill, JobPosting } from "@/types"
 
@@ -149,6 +152,41 @@ function bulletLines(text: string | undefined | null): string[] {
   return String(text ?? "").split("\n").map((l) => l.trim()).filter(Boolean)
 }
 
+// T12: textarea auto-grow. Tinggi mengikuti isi (max ~400px) supaya user
+// tidak menulis panjang di dalam kotak 80px saat keyboard mobile terbuka.
+function autoGrowTextarea(e: React.FormEvent<HTMLTextAreaElement>) {
+  const el = e.currentTarget
+  el.style.height = "auto"
+  el.style.height = `${Math.min(el.scrollHeight, 400)}px`
+}
+
+// Nama file PDF hasil print mengikuti document.title — buang karakter yang
+// tidak boleh ada di nama file (/ \ : * ? " < > |) supaya tidak jadi "-"
+// atau terpotong oleh browser/OS.
+function sanitizePdfTitle(raw: string): string {
+  return raw.replace(/[/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
+}
+
+// T9: deteksi data contoh/mock sebelum print. Rekruter langsung menolak CV
+// berisi data demo, jadi kita peringatkan dulu (bisa "Ganti Data Saya" atau
+// "Tetap Cetak"). Marker = nilai dari sample mock (sample-mock.ts).
+const PLACEHOLDER_MARKERS = [
+  "[Nama Perusahaan]",
+  "[Nama Universitas]",
+]
+const PLACEHOLDER_NAME = "Rina Putri"
+
+function resumeHasPlaceholderData(resume: ResumeData): boolean {
+  let serialized = ""
+  try {
+    serialized = JSON.stringify(resume).toLowerCase()
+  } catch {
+    return false
+  }
+  if (PLACEHOLDER_MARKERS.some((m) => serialized.includes(m.toLowerCase()))) return true
+  return (resume.personalInfo?.fullName ?? "").trim() === PLACEHOLDER_NAME
+}
+
 const MONTH_SHORT_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const MONTH_SHORT_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 
@@ -201,6 +239,10 @@ const DEFAULT_SECTION_ORDER: ResumeSectionId[] = [
   "summary", "experiences", "organizations", "projects", "education",
   "research", "skills", "awards", "languages",
 ]
+
+// Key SectionCard di builder: dua kartu identitas + semua section CV.
+// Dipakai untuk state buka/tutup terkontrol (collapse otomatis di mobile).
+const SECTION_CARD_KEYS = ["personal", "photo", ...DEFAULT_SECTION_ORDER]
 
 const SECTION_LABELS_EN: Record<ResumeSectionId, string> = {
   summary: "Summary",
@@ -273,15 +315,25 @@ function normalizeHiddenSections(v: unknown): ResumeSectionId[] {
 const A4_CONTENT_PX = 1047
 
 function SectionCard({
-  title, icon: Icon, color, children, defaultOpen = true,
+  title, icon: Icon, color, children, defaultOpen = true, open: openProp, onOpenChange,
 }: {
   title: string; icon: any; color: string; children: React.ReactNode; defaultOpen?: boolean
+  open?: boolean; onOpenChange?: (open: boolean) => void
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [internalOpen, setInternalOpen] = useState(defaultOpen)
+  const open = openProp !== undefined ? openProp : internalOpen
+  const setOpen = (next: boolean) => {
+    if (openProp !== undefined && onOpenChange) {
+      onOpenChange(next)
+    } else {
+      setInternalOpen(next)
+    }
+  }
   return (
     <Card className="border-border/50">
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="w-full flex items-center justify-between p-4 hover:bg-accent/50 transition-colors rounded-t-2xl"
       >
         <div className="flex items-center gap-3">
@@ -320,21 +372,48 @@ export function ResumeBuilder() {
   const [showImportTools, setShowImportTools] = useState(false)
   const [generatingSample, setGeneratingSample] = useSampleGenerating()
   const [exportingPdf, setExportingPdf] = useState(false)
-  const [resumeLang, setResumeLang] = useState<"id" | "en">("en")
+  // Default bahasa CV: "id" untuk semua user baru (pasar utama Indonesia).
+  // Preferensi tersimpan di-restorasi oleh efek mount di bawah (dipisah agar
+  // tidak ada hydration mismatch saat komponen di-SSR).
+  const [resumeLang, setResumeLang] = useState<"id" | "en">("id")
   const [translating, setTranslating] = useState(false)
   const [cvFont, setCvFont] = useState<CvFont>("elegant")
   const [cvSize, setCvSize] = useState<CvFontSize>("medium")
   const [accentIdx, setAccentIdx] = useState(0)
   const [sectionOrder, setSectionOrder] = useState<ResumeSectionId[]>(DEFAULT_SECTION_ORDER)
   const [hiddenSections, setHiddenSections] = useState<ResumeSectionId[]>([])
-  const [compactOnePage, setCompactOnePage] = useState(true)
+  // Default OFF: pemadatan 1 halaman memaksa zoom ekstrem (font ~5px) untuk
+  // CV panjang. User yang memang mau 1 halaman bisa menyalakannya sendiri.
+  const [compactOnePage, setCompactOnePage] = useState(false)
   const [contentH, setContentH] = useState(0)
   const previewRef = useRef<HTMLDivElement>(null)
+  // Throttle peringatan kuota localStorage: max 1x per 10 detik.
+  const lastStorageWarnRef = useRef(0)
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
   const [preGenerate, setPreGenerate] = useState<ResumeData | null>(null)
   const [showSupportPrompt, setShowSupportPrompt] = useState(false)
+  // Guard data contoh sebelum print (T9) + konfirmasi hapus semua data (T7).
+  const [showPlaceholderWarning, setShowPlaceholderWarning] = useState(false)
+  const [showWipeConfirm, setShowWipeConfirm] = useState(false)
+  // T10: state terkontrol buka/tutup SectionCard. Key = id section atau
+  // "personal"/"photo". Undefined fallback: terbuka (kecuali foto defaultOpen false).
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({})
 
   const SAWERIA_URL = "https://saweria.co/pogungsoftwarehouse"
+
+  // Refs untuk autosave debounce (T1), status hydrate, dan guard placeholder.
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autosaveDataRef = useRef<ResumeData | null>(null)
+  const placeholderSkipRef = useRef(false)
+  const importFileRef = useRef<HTMLInputElement>(null)
+  // T1: id timer toast disimpan di ref agar clearTimeout bisa menghentikan
+  // timer toast sebelumnya; dua toast beruntun tidak saling menutup prematur.
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // T3: ref tombol aksi utama tiap modal; difokuskan otomatis saat modal terbuka.
+  const generateConfirmActionRef = useRef<HTMLButtonElement>(null)
+  const supportPromptActionRef = useRef<HTMLButtonElement>(null)
+  const placeholderWarningActionRef = useRef<HTMLButtonElement>(null)
+  const wipeConfirmActionRef = useRef<HTMLButtonElement>(null)
 
   // Edit & preview menimpa di tempat yang sama: posisi scroll tidak
   // disentuh sama sekali agar tidak ada lompatan paksa.
@@ -427,6 +506,13 @@ export function ResumeBuilder() {
       if (!detail) return
       if (typeof detail === "object" && detail !== null && "resume" in detail && (detail as { resume?: unknown }).resume) {
         const wrapped = detail as { resume: ResumeData; lang?: unknown }
+        // Jalur analyzer/optimizer menulis backup ke key "resume_data_before_generate"
+        // sebelum menimpa. Ambil di sini supaya tombol "Urungkan generate terakhir"
+        // juga berlaku untuk data yang datang dari luar builder.
+        try {
+          const backupRaw = safeLocalGet("resume_data_before_generate")
+          if (backupRaw) setPreGenerate(normalizeResumeData(JSON.parse(backupRaw)))
+        } catch {}
         setResume(normalizeResumeData(wrapped.resume))
         if (wrapped.lang === "id" || wrapped.lang === "en") {
           setResumeLang(wrapped.lang)
@@ -437,12 +523,110 @@ export function ResumeBuilder() {
       setResume(normalizeResumeData(detail as ResumeData))
     }
     window.addEventListener("resume_data_updated", handleResumeUpdate)
-    return () => window.removeEventListener("resume_data_updated", handleResumeUpdate)
+
+    // Tombol "Gunakan Template" di section templates mengirim key template.
+    const handleUseTemplate = (e: Event) => {
+      const t = (e as CustomEvent<{ template?: unknown }>).detail?.template
+      if (typeof t === "string" && t in templateStyles) {
+        setSelectedTemplate(t as ResumeTemplate)
+      }
+      document.getElementById("builder")?.scrollIntoView({ behavior: "smooth" })
+    }
+    window.addEventListener("use_template", handleUseTemplate)
+
+    return () => {
+      window.removeEventListener("resume_data_updated", handleResumeUpdate)
+      window.removeEventListener("use_template", handleUseTemplate)
+    }
   }, [])
 
+  // CTA "Coba Tanpa API Key (Gratis)" di hero dan kartu error job-analyzer
+  // mengirim event "demo_generate" → jalankan jalur Generate Sample CV yang
+  // sama persis dengan tombol di builder (requestGenerate). Dengan begitu,
+  // bila CV sudah berisi, modal konfirmasi data-loss tetap tampil dan tidak
+  // pernah dilewati. Deps mengikuti requestGenerate agar keputusan konfirmasi
+  // selalu membaca isi CV terkini, bukan closure saat mount.
   useEffect(() => {
-    safeLocalSet("resume_data", JSON.stringify(resume))
+    const handleDemoGenerate = () => requestGenerate()
+    window.addEventListener("demo_generate", handleDemoGenerate)
+    return () => window.removeEventListener("demo_generate", handleDemoGenerate)
+  }, [requestGenerate])
+
+  // T10a: preferensi buka/tutup SectionCard dipersist. Saat mount di layar
+  // <1024px tanpa preferensi tersimpan, tutup semua kecuali Data Pribadi agar
+  // user mobile tidak scroll maraton 11 section terbuka.
+  useEffect(() => {
+    const storedOpen = safeLocalGet("resume_sections_open")
+    if (storedOpen) {
+      try {
+        const parsed = JSON.parse(storedOpen)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          setOpenSections(parsed as Record<string, boolean>)
+          return
+        }
+      } catch {}
+    }
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      const initial: Record<string, boolean> = {}
+      for (const key of SECTION_CARD_KEYS) initial[key] = key === "personal"
+      setOpenSections(initial)
+      safeLocalSet("resume_sections_open", JSON.stringify(initial))
+    }
+  }, [])
+
+  const setSectionCardOpen = (key: string, open: boolean) => {
+    setOpenSections((prev) => {
+      const next = { ...prev, [key]: open }
+      safeLocalSet("resume_sections_open", JSON.stringify(next))
+      return next
+    })
+  }
+  const isSectionCardOpen = (key: string, fallback = true) => openSections[key] ?? fallback
+
+  // Autosave dengan debounce 500ms: stringify seluruh resume tiap ketikan itu
+  // berat, jadi tulis ke localStorage hanya setelah user berhenti mengetik.
+  useEffect(() => {
+    autosaveDataRef.current = resume
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null
+      const ok = safeLocalSet("resume_data", JSON.stringify(autosaveDataRef.current))
+      if (!ok) {
+        // Kuota localStorage penuh (biasanya karena foto base64) → autosave
+        // gagal senyap. Beri tahu user, tapi jangan spam toast per ketikan.
+        const now = Date.now()
+        if (now - lastStorageWarnRef.current > 10_000) {
+          lastStorageWarnRef.current = now
+          showToast("Penyimpanan browser penuh (biasanya karena foto). Data terbaru TIDAK tersimpan — unduh atau simpan data CV-mu!", "error")
+        }
+      }
+    }, 500)
   }, [resume])
+
+  // Flush autosave segera saat tab ditutup / disembunyikan, supaya data yang
+  // baru diketik (masih menunggu debounce) tidak hilang.
+  useEffect(() => {
+    const flushAutosave = () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current)
+        autosaveTimerRef.current = null
+      }
+      const data = autosaveDataRef.current
+      if (data) safeLocalSet("resume_data", JSON.stringify(data))
+    }
+    const onBeforeUnload = () => flushAutosave()
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushAutosave()
+    }
+    window.addEventListener("beforeunload", onBeforeUnload)
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+      // Unmount dengan data belum tersimpan (nav/refresh via framework) → flush.
+      flushAutosave()
+    }
+  }, [])
 
   useEffect(() => {
     safeLocalSet("resume_style", JSON.stringify({ font: cvFont, size: cvSize, accent: accentIdx }))
@@ -509,9 +693,48 @@ export function ResumeBuilder() {
   }
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
+    // T1: hentikan timer toast sebelumnya supaya toast kedua yang muncul
+    // berdekatan tidak langsung ditutup oleh timer toast pertama.
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast({ show: true, message, type })
-    setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3000)
+    toastTimerRef.current = setTimeout(() => {
+      toastTimerRef.current = null
+      setToast({ show: false, message: "", type: "success" })
+    }, 3000)
   }
+
+  // T3: Escape menutup modal yang sedang aktif. Listener hanya terpasang
+  // selama ada modal terbuka, jadi tidak mengganggu input di form.
+  useEffect(() => {
+    const anyOpen = showGenerateConfirm || showSupportPrompt || showPlaceholderWarning || showWipeConfirm
+    if (!anyOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (showWipeConfirm) setShowWipeConfirm(false)
+      else if (showPlaceholderWarning) setShowPlaceholderWarning(false)
+      else if (showSupportPrompt) setShowSupportPrompt(false)
+      else if (showGenerateConfirm) setShowGenerateConfirm(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [showGenerateConfirm, showSupportPrompt, showPlaceholderWarning, showWipeConfirm])
+
+  // T3: saat modal terbuka, fokuskan tombol aksi utamanya agar keyboard user
+  // langsung berada di dalam dialog, bukan di body halaman.
+  useEffect(() => {
+    if (showGenerateConfirm) generateConfirmActionRef.current?.focus()
+  }, [showGenerateConfirm])
+  useEffect(() => {
+    if (showSupportPrompt) supportPromptActionRef.current?.focus()
+  }, [showSupportPrompt])
+  useEffect(() => {
+    if (showPlaceholderWarning) placeholderWarningActionRef.current?.focus()
+  }, [showPlaceholderWarning])
+  // Modal wipe bersifat destruktif permanen (tanpa undo) → fokus diarahkan ke
+  // tombol aman "Batal" mengikuti pola alert-dialog WAI-ARIA APG.
+  useEffect(() => {
+    if (showWipeConfirm) wipeConfirmActionRef.current?.focus()
+  }, [showWipeConfirm])
 
   const isResumeEmpty =
     !resume.personalInfo.fullName &&
@@ -523,15 +746,28 @@ export function ResumeBuilder() {
     resume.skills.length === 0 &&
     (resume.skillGroups ?? []).length === 0
 
+  // T10b: progress pengisian CV dari 8 kategori (ringkasan, pengalaman,
+  // organisasi, proyek, pendidikan, riset, skills, penghargaan/sertifikasi).
+  const filledSections = [
+    resume.summary.trim().length > 0,
+    resume.experiences.length > 0,
+    (resume.organizations ?? []).length > 0,
+    resume.projects.length > 0,
+    resume.education.length > 0,
+    (resume.research ?? []).length > 0,
+    getDisplaySkillGroups(resume).length > 0,
+    getDisplayAwards(resume).length > 0 || (resume.certifications ?? []).length > 0,
+  ].filter(Boolean).length
+
   const handleGenerateSample = async () => {
     if (generatingSample) return
     setGeneratingSample(true)
     try {
       const stored = safeLocalGet("job_analysis")
       if (!stored) {
+        // Pertahankan bahasa yang sedang aktif di builder (default "id").
+        // Dulu dipaksa "en", CV lamaran Indonesia jadi bahasa Inggris.
         setResume(buildMockSampleResume(null))
-        setResumeLang("en")
-        safeLocalSet("resume_lang", "en")
         setShowImportTools(false)
         showToast("Contoh CV dibuat dari data sample. Lengkapi dengan data aslimu.")
         return
@@ -540,8 +776,6 @@ export function ResumeBuilder() {
       const hasApi = !!getApiConfig()
       const sample = hasApi ? await generateSampleResume(jobPosting) : buildMockSampleResume(jobPosting)
       setResume(sample)
-      setResumeLang("en")
-      safeLocalSet("resume_lang", "en")
       setShowImportTools(false)
       showToast(
         hasApi
@@ -555,16 +789,25 @@ export function ResumeBuilder() {
     }
   }
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    // Reset input agar memilih file yang sama lagi tetap memicu onChange.
+    e.target.value = ""
     if (!file) return
-    if (file.size > 2 * 1024 * 1024) {
-      showToast("Ukuran foto maksimal 2MB", "error")
+    if (file.size > 15 * 1024 * 1024) {
+      showToast("Foto terlalu besar, coba foto lain", "error")
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => updatePersonalInfo("photo", String(reader.result))
-    reader.readAsDataURL(file)
+    try {
+      // Kompres via canvas (sisi terpanjang max 800px, JPEG kualitas menurun
+      // bertahap, target <= 300KB) sebelum disimpan sebagai base64, supaya
+      // foto tidak menggedor kuota localStorage (~5MB).
+      const dataUrl = await compressImageFile(file)
+      updatePersonalInfo("photo", dataUrl)
+      showToast("Foto dioptimalkan otomatis agar hemat penyimpanan")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Foto terlalu besar, coba foto lain", "error")
+    }
   }
 
   const handleToggleLanguage = async (next: "id" | "en") => {
@@ -795,12 +1038,23 @@ export function ResumeBuilder() {
   const handleDownloadPdf = async () => {
     setExportingPdf(true)
 
+    // Simpan judul & tema lama; keduanya dipulihkan di finally setelah print.
+    const prevTitle = document.title
+    const htmlEl = document.documentElement
+    const hadDarkClass = htmlEl.classList.contains("dark")
+
     try {
-      const previewEl = document.getElementById("resume-preview-content")
+      let previewEl = document.getElementById("resume-preview-content")
       if (!previewEl) {
-        showToast("Silakan buka preview CV terlebih dahulu", "error")
-        setExportingPdf(false)
-        return
+        // Auto-switch preview baru saja terjadi → preview mungkin belum selesai
+        // render. Tunggu singkat lalu coba sekali lagi.
+        await new Promise((r) => setTimeout(r, 300))
+        previewEl = document.getElementById("resume-preview-content")
+        if (!previewEl) {
+          showToast("Preview CV belum siap. Coba lagi sesaat lagi.", "error")
+          setExportingPdf(false)
+          return
+        }
       }
 
       // Clone and append to body for clean print.
@@ -818,6 +1072,11 @@ export function ResumeBuilder() {
       clone.style.zIndex = "99999"
       document.body.appendChild(clone)
 
+      // Belt-and-suspenders print dark mode: lepas class "dark" selama export
+      // agar varian dark:* (mis. teks putih) tidak ikut tercetak. CSS variabel
+      // tema di-override ke nilai light di print CSS (globals.css).
+      if (hadDarkClass) htmlEl.classList.remove("dark")
+
       // Small delay for render
       await new Promise((r) => setTimeout(r, 150))
       if (compactOnePage) {
@@ -833,7 +1092,19 @@ export function ResumeBuilder() {
           }
         } catch {}
       }
+
+      // Nama file PDF = nama kandidat (window.print() memakai document.title
+      // sebagai nama default file yang disimpan).
+      const pi = resume.personalInfo
+      document.title = sanitizePdfTitle(`${pi.fullName || "CV"} - ${pi.headline || "CV"}`)
       window.print()
+
+      // window.print() bersifat blocking: sampai baris ini dijalankan berarti
+      // dialog print sudah selesai (user sudah cetak/simpan/batal). Modal
+      // donasi sekarang muncul DI SINI, sekali, bukan menyela sebelum print.
+      if (safeLocalGet("donation_modal_dismissed") !== "1") {
+        setShowSupportPrompt(true)
+      }
 
       // Cleanup after print dialog closes
       setTimeout(() => {
@@ -843,7 +1114,116 @@ export function ResumeBuilder() {
     } catch (err) {
       showToast("Gagal export: " + (err instanceof Error ? err.message : "unknown error"), "error")
       setExportingPdf(false)
+    } finally {
+      document.title = prevTitle
+      if (hadDarkClass) htmlEl.classList.add("dark")
     }
+  }
+
+  // Lanjutan alur cetak: bila user masih di mode edit, auto-switch ke preview
+  // dulu lalu beri delay singkat untuk render sebelum print.
+  const continuePrintFlow = () => {
+    if (!preview) {
+      setPreview(true)
+      setTimeout(() => handleDownloadPdf(), 350)
+      return
+    }
+    handleDownloadPdf()
+  }
+
+  // Gerbang tunggal tombol "Cetak / Simpan PDF" (kartu Export + sticky bar
+  // mobile): guard data contoh dijalankan SEBELUM title/dark/print disentuh.
+  const startPrintFlow = () => {
+    if (!placeholderSkipRef.current && resumeHasPlaceholderData(resume)) {
+      setShowPlaceholderWarning(true)
+      return
+    }
+    continuePrintFlow()
+  }
+
+  const dismissDonationForever = () => {
+    safeLocalSet("donation_modal_dismissed", "1")
+    setShowSupportPrompt(false)
+    showToast("Modal donasi tidak akan ditampilkan lagi")
+  }
+
+  // T7: export seluruh data CV ke file JSON.
+  const handleExportJson = () => {
+    try {
+      const payload = buildResumeFile({
+        resume,
+        lang: resumeLang,
+        style: { font: cvFont, size: cvSize, accent: accentIdx },
+        layout: { order: sectionOrder, hidden: hiddenSections, compact: compactOnePage },
+        sectionOrder,
+        hiddenSections,
+      })
+      downloadResumeFile(payload, resume.personalInfo.fullName || "cv")
+      showToast("Data CV disimpan ke file .json. Simpan baik-baik ya!")
+    } catch {
+      showToast("Gagal menyimpan data ke file", "error")
+    }
+  }
+
+  // T7: muat data CV dari file JSON hasil export.
+  const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed = parseResumeFile(text)
+      setResume(normalizeResumeData(parsed.resume_data))
+      setResumeLang(parsed.resume_lang)
+      safeLocalSet("resume_lang", parsed.resume_lang)
+      if (parsed.resume_style && typeof parsed.resume_style === "object" && !Array.isArray(parsed.resume_style)) {
+        const s = parsed.resume_style as { font?: unknown; size?: unknown; accent?: unknown }
+        if (typeof s.font === "string" && s.font in FONT_STACKS) setCvFont(s.font as CvFont)
+        if (typeof s.size === "string" && s.size in FONT_SCALE) setCvSize(s.size as CvFontSize)
+        if (typeof s.accent === "number" && Number.isInteger(s.accent) && s.accent >= 0 && s.accent < ACCENT_PALETTES.length) {
+          setAccentIdx(s.accent)
+        }
+      }
+      if (parsed.resume_layout && typeof parsed.resume_layout === "object" && !Array.isArray(parsed.resume_layout)) {
+        const l = parsed.resume_layout as { order?: unknown; hidden?: unknown; compact?: unknown }
+        setSectionOrder(normalizeSectionOrder(l.order))
+        setHiddenSections(normalizeHiddenSections(l.hidden))
+        if (typeof l.compact === "boolean") setCompactOnePage(l.compact)
+      } else {
+        if (Array.isArray(parsed.sectionOrder)) setSectionOrder(normalizeSectionOrder(parsed.sectionOrder))
+        if (Array.isArray(parsed.hiddenSections)) setHiddenSections(normalizeHiddenSections(parsed.hiddenSections))
+      }
+      setShowImportTools(false)
+      showToast("Data CV berhasil dimuat dari file")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Gagal memuat file", "error")
+    }
+  }
+
+  // T7: hapus semua data milik LolosCV dari localStorage + reset state.
+  const handleWipeAllData = () => {
+    clearAppStorage()
+    setShowWipeConfirm(false)
+    setResume(createEmptyResume())
+    setPreGenerate(null)
+    setResumeLang("id")
+    setCvFont("elegant")
+    setCvSize("medium")
+    setAccentIdx(0)
+    setSectionOrder(DEFAULT_SECTION_ORDER)
+    setHiddenSections([])
+    setCompactOnePage(false)
+    setOpenSections({})
+    setShowImportTools(false)
+    placeholderSkipRef.current = false
+    showToast("Semua data LolosCV dihapus dari browser ini")
+  }
+
+  // T11: preset fresh graduate. Hanya menyembunyikan section di preview/PDF,
+  // data riset/proyek/organisasi tetap ada (tidak dihapus).
+  const applyFreshGraduatePreset = () => {
+    setHiddenSections(["research", "projects", "organizations"])
+    showToast("Preset Sederhana aktif: Riset, Proyek, dan Organisasi disembunyikan. Datamu tidak hilang.")
   }
 
   const template = templateStyles[selectedTemplate]
@@ -852,7 +1232,11 @@ export function ResumeBuilder() {
   return (
     <section id="builder" className="py-24 relative">
       {toast.show && (
-        <div className="fixed top-20 right-4 z-[100] flex items-start gap-3 pl-3 pr-5 py-3 rounded-2xl shadow-2xl border border-border bg-card text-card-foreground max-w-sm animate-[toast-in_.3s_ease-out]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-20 right-4 z-[100] flex items-start gap-3 pl-3 pr-5 py-3 rounded-2xl shadow-2xl border border-border bg-card text-card-foreground max-w-sm animate-[toast-in_.3s_ease-out]"
+        >
           <div className={cn(
             "p-2 rounded-xl text-white shrink-0 shadow",
             toast.type === "success" ? "bg-emerald-500" : "bg-red-500"
@@ -878,6 +1262,9 @@ export function ResumeBuilder() {
           <div
             className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 animate-[modal-in_.25s_ease-out]"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={resumeLang === "en" ? "Replace entire CV?" : "Ganti seluruh isi CV?"}
           >
             <button
               onClick={() => setShowGenerateConfirm(false)}
@@ -905,7 +1292,7 @@ export function ResumeBuilder() {
               <Button variant="outline" className="flex-1" onClick={() => setShowGenerateConfirm(false)}>
                 {resumeLang === "en" ? "Cancel" : "Batal"}
               </Button>
-              <Button className="flex-1 gap-2" onClick={confirmGenerate} disabled={generatingSample}>
+              <Button ref={generateConfirmActionRef} className="flex-1 gap-2" onClick={confirmGenerate} disabled={generatingSample}>
                 <Wand2 className="w-4 h-4" />
                 {resumeLang === "en" ? "Generate & Replace" : "Generate & Ganti"}
               </Button>
@@ -922,6 +1309,9 @@ export function ResumeBuilder() {
           <div
             className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 text-center"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={resumeLang === "en" ? "Like the result?" : "Suka hasilnya?"}
           >
             <button
               onClick={() => setShowSupportPrompt(false)}
@@ -945,11 +1335,11 @@ export function ResumeBuilder() {
             </p>
             <div className="flex flex-col gap-2 mt-5">
               <Button
+                ref={supportPromptActionRef}
                 className="w-full gap-2"
                 onClick={() => {
                   window.open(SAWERIA_URL, "_blank", "noopener,noreferrer")
                   setShowSupportPrompt(false)
-                  handleDownloadPdf()
                 }}
               >
                 <Heart className="w-4 h-4" />
@@ -959,13 +1349,121 @@ export function ResumeBuilder() {
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={() => {
-                  setShowSupportPrompt(false)
-                  handleDownloadPdf()
-                }}
-                disabled={exportingPdf}
+                onClick={() => setShowSupportPrompt(false)}
               >
-                {resumeLang === "en" ? "Skip, download directly" : "Lewati, langsung download"}
+                {resumeLang === "en" ? "Maybe later" : "Nanti saja"}
+              </Button>
+              <button
+                onClick={dismissDonationForever}
+                className="mx-auto mt-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+              >
+                {resumeLang === "en" ? "Don't show this again" : "Jangan tampilkan lagi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPlaceholderWarning && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
+          onClick={() => setShowPlaceholderWarning(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 animate-[modal-in_.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="CV kamu masih berisi data contoh"
+          >
+            <button
+              onClick={() => setShowPlaceholderWarning(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Tutup"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/40 text-amber-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">CV kamu masih berisi data contoh</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Nama perusahaan, email, atau foto di CV ini masih data demo. Rekruter langsung menolak CV dengan data contoh. Ganti dulu dengan data aslimu.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 mt-5">
+              <Button
+                ref={placeholderWarningActionRef}
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowPlaceholderWarning(false)
+                  placeholderSkipRef.current = false
+                  if (preview) setPreview(false)
+                  setTimeout(() => {
+                    document.getElementById("builder")?.scrollIntoView({ behavior: "smooth" })
+                    const firstInput = document.querySelector<HTMLElement>("#builder input:not([type=file])")
+                    firstInput?.focus()
+                  }, 50)
+                }}
+              >
+                Ganti Data Saya
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  setShowPlaceholderWarning(false)
+                  placeholderSkipRef.current = true
+                  continuePrintFlow()
+                }}
+              >
+                Tetap Cetak
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWipeConfirm && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-[overlay-in_.2s_ease-out]"
+          onClick={() => setShowWipeConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-card border border-border shadow-2xl p-6 animate-[modal-in_.25s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Hapus semua data CV dari browser ini?"
+          >
+            <button
+              onClick={() => setShowWipeConfirm(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Batal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-red-100 dark:bg-red-950/40 text-red-600 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">Hapus semua data CV dari browser ini?</h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  Semua isi CV, pengaturan, dan konfigurasi API akan dihapus permanen dari penyimpanan browser ini. Kalau belum punya cadangan, simpan dulu datanya ke file.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 mt-5">
+              <Button ref={wipeConfirmActionRef} variant="outline" className="flex-1" onClick={() => setShowWipeConfirm(false)}>
+                Batal
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleWipeAllData}>
+                Ya, Hapus Semua
               </Button>
             </div>
           </div>
@@ -991,9 +1489,20 @@ export function ResumeBuilder() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-24 lg:pb-0">
           <div className="lg:col-span-2 space-y-6">
             <h3 className="text-lg font-bold px-1">{preview ? "Preview CV" : "Edit CV"}</h3>
+            {/* T8/T10b: chip autosave + progress pengisian. Posisi di atas form
+                supaya terlihat di mobile sebelum user scroll jauh. */}
+            <div className="flex flex-wrap items-center gap-2 px-1 print:hidden">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Tersimpan otomatis di browser ini
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                {filledSections}/8 bagian terisi
+              </span>
+            </div>
             <div className="sticky top-16 z-30 -mx-1 px-2 py-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 rounded-xl border border-border/50 shadow-sm">
             <div className="flex items-center gap-2 flex-wrap">
                 <Button variant="outline" size="sm" onClick={togglePreview} className="gap-2">
@@ -1006,7 +1515,7 @@ export function ResumeBuilder() {
                     disabled={translating || resumeLang === "id"}
                     title="Terjemahkan ke Bahasa Indonesia"
                     className={cn(
-                      "px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors",
+                      "px-3 py-2 min-h-[40px] rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors",
                       resumeLang === "id" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                     )}
                   >
@@ -1018,7 +1527,7 @@ export function ResumeBuilder() {
                     disabled={translating || resumeLang === "en"}
                     title="Translate to English"
                     className={cn(
-                      "px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors",
+                      "px-3 py-2 min-h-[40px] rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors",
                       resumeLang === "en" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                     )}
                   >
@@ -1034,7 +1543,7 @@ export function ResumeBuilder() {
                   onChange={(e) => setSelectedTemplate(e.target.value as ResumeTemplate)}
                   title={resumeLang === "en" ? "Template" : "Template"}
                   aria-label="Template"
-                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-1.5 bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer max-w-[150px] appearance-none"
+                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-2 min-h-[40px] bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer max-w-[150px] appearance-none"
                 >
                   {(Object.entries(templateStyles) as [ResumeTemplate, TemplateStyle][]).map(([key, t]) => (
                     <option key={key} value={key}>{t.name}</option>
@@ -1049,7 +1558,7 @@ export function ResumeBuilder() {
                   onChange={(e) => setCvFont(e.target.value as CvFont)}
                   title={resumeLang === "en" ? "Font" : "Font"}
                   aria-label="Font"
-                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-1.5 bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer max-w-[130px] appearance-none"
+                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-2 min-h-[40px] bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer max-w-[130px] appearance-none"
                 >
                   {(Object.keys(FONT_STACKS) as CvFont[]).map((f) => (
                     <option key={f} value={f}>{resumeLang === "en" ? FONT_LABELS_EN[f] : FONT_LABELS_ID[f]}</option>
@@ -1064,7 +1573,7 @@ export function ResumeBuilder() {
                   onChange={(e) => setCvSize(e.target.value as CvFontSize)}
                   title={resumeLang === "en" ? "Size" : "Ukuran"}
                   aria-label="Size"
-                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-1.5 bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer appearance-none"
+                  className="text-xs font-medium border border-border rounded-lg pl-8 pr-7 py-2 min-h-[40px] bg-background hover:border-primary/50 focus:border-primary transition-colors cursor-pointer appearance-none"
                 >
                   {(Object.keys(FONT_SCALE) as CvFontSize[]).map((s) => (
                     <option key={s} value={s}>{resumeLang === "en" ? SIZE_LABELS_EN[s] : SIZE_LABELS_ID[s]}</option>
@@ -1081,7 +1590,7 @@ export function ResumeBuilder() {
                       title={resumeLang === "en" ? p.name : p.nameId}
                       aria-label={resumeLang === "en" ? p.name : p.nameId}
                       className={cn(
-                        "w-5 h-5 rounded-full border-2 transition-all",
+                        "w-9 h-9 rounded-full border-2 transition-all",
                         accentIdx === i ? "ring-2 ring-offset-1 ring-primary border-transparent" : "border-border"
                       )}
                       style={{ backgroundColor: p.main }}
@@ -1104,7 +1613,7 @@ export function ResumeBuilder() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <CVUploader onApply={(data) => { setResume(data); setShowImportTools(false); showToast("Data CV berhasil diimport!") }} />
+                  <CVUploader onApply={(data) => { setResume(data); setShowImportTools(false); showToast("Data CV berhasil diimport!") }} onClose={() => setShowImportTools(false)} />
                 </CardContent>
               </Card>
             )}
@@ -2076,7 +2585,7 @@ export function ResumeBuilder() {
               </Card>
             ) : (
               <>
-                <SectionCard title={resumeLang === "en" ? "Personal Information" : "Data Pribadi"} icon={User} color="bg-blue-500">
+                <SectionCard open={isSectionCardOpen("personal")} onOpenChange={(o) => setSectionCardOpen("personal", o)} title={resumeLang === "en" ? "Personal Information" : "Data Pribadi"} icon={User} color="bg-blue-500">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {[
                       { key: "fullName", label: (resumeLang === "en" ? "Full Name" : "Nama Lengkap"), placeholder: "John Doe" },
@@ -2087,8 +2596,9 @@ export function ResumeBuilder() {
                       { key: "portfolio", label: "Portfolio/GitHub", placeholder: "github.com/johndoe" },
                     ].map(({ key, label, placeholder, type }) => (
                       <div key={key} className="space-y-2">
-                        <Label>{label}</Label>
+                        <Label htmlFor={`pi-${key}`}>{label}</Label>
                         <Input
+                          id={`pi-${key}`}
                           placeholder={placeholder}
                           type={type || "text"}
                           value={(resume.personalInfo as any)[key]}
@@ -2097,8 +2607,9 @@ export function ResumeBuilder() {
                       </div>
                     ))}
                     <div className="space-y-2 sm:col-span-2">
-                      <Label>Headline / Tagline</Label>
+                      <Label htmlFor="pi-headline">Headline / Tagline</Label>
                       <Input
+                        id="pi-headline"
                         placeholder="cth: Machine Learning Engineer"
                         value={resume.personalInfo.headline ?? ""}
                         onChange={(e) => updatePersonalInfo("headline", e.target.value)}
@@ -2107,7 +2618,7 @@ export function ResumeBuilder() {
                   </div>
                 </SectionCard>
 
-                <SectionCard title={resumeLang === "en" ? "Profile Photo (optional)" : "Foto Profil (opsional)"} icon={User} color="bg-cyan-500" defaultOpen={false}>
+                <SectionCard open={isSectionCardOpen("photo", false)} onOpenChange={(o) => setSectionCardOpen("photo", o)} title={resumeLang === "en" ? "Profile Photo (optional)" : "Foto Profil (opsional)"} icon={User} color="bg-cyan-500">
                   <div className="flex items-center gap-4">
                     {isSafePhotoSrc(resume.personalInfo.photo) ? (
                       <img src={resume.personalInfo.photo} alt="Preview foto" className="w-[72px] h-[108px] object-cover border" />
@@ -2115,10 +2626,16 @@ export function ResumeBuilder() {
                       <div className="w-[72px] h-[108px] bg-muted border border-dashed flex items-center justify-center text-[9px] text-muted-foreground text-center">Foto<br />2x3</div>
                     )}
                     <div className="flex-1 space-y-2">
-                      <Input type="file" accept="image/jpeg,image/png,image/webp" className="text-xs" onChange={handlePhotoUpload} />
+                      <Input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="text-xs"
+                        aria-label={resumeLang === "en" ? "Upload profile photo" : "Unggah foto profil"}
+                        onChange={handlePhotoUpload}
+                      />
                       <p className="text-[10px] text-muted-foreground">
-                        Format JPG/PNG/WebP, maksimal 2MB. Rasio pas foto 2:3 (lebar:tinggi), ukuran ideal 240x360px.
-                        Foto dipakai di template ATS + Foto, tampil sebagai kotak pas foto.
+                        Format JPG/PNG/WebP. Foto besar otomatis dikompres (sisi maks 800px, target di bawah 300KB) supaya hemat penyimpanan.
+                        Rasio pas foto 2:3 (lebar:tinggi), ukuran ideal 240x360px. Foto dipakai di template ATS + Foto, tampil sebagai kotak pas foto.
                       </p>
                       {resume.personalInfo.photo && (
                         <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 h-auto p-0" onClick={() => updatePersonalInfo("photo", undefined)}>
@@ -2131,9 +2648,11 @@ export function ResumeBuilder() {
 
                 {sectionOrder.map((sid) => {
                   if (sid === "summary") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Globe} color="bg-violet-500">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Globe} color="bg-violet-500">
                       <div className="space-y-3">
                         <textarea
+                          onInput={autoGrowTextarea}
+                          aria-label={resumeLang === "en" ? "Professional summary" : "Ringkasan profesional"}
                           className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-4 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                           placeholder={resumeLang === "en" ? "Write your professional summary... Or ask AI to help" : "Tulis ringkasan profesionalmu... Atau minta bantuan menulis"}
                           value={resume.summary}
@@ -2151,44 +2670,46 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "experiences") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Briefcase} color="bg-emerald-500">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Briefcase} color="bg-emerald-500">
                       <div className="space-y-4">
                         {resume.experiences.length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-4">
                             {resumeLang === "en" ? "No experience yet. Click below to add." : "Belum ada pengalaman. Klik tombol di bawah untuk menambah."}
                           </p>
                         )}
-                        {resume.experiences.map((exp) => (
+                        {resume.experiences.map((exp, i) => (
                           <Card key={exp.id} className="border-border/50">
                             <CardContent className="pt-4">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Company" : "Perusahaan"}</Label>
-                                  <Input value={exp.company} onChange={(e) => updateExperience(exp.id, "company", e.target.value)} placeholder={resumeLang === "en" ? "Company name" : "Nama perusahaan"} />
+                                  <Label htmlFor={`exp-${i}-company`}>{resumeLang === "en" ? "Company" : "Perusahaan"}</Label>
+                                  <Input id={`exp-${i}-company`} value={exp.company} onChange={(e) => updateExperience(exp.id, "company", e.target.value)} placeholder={resumeLang === "en" ? "Company name" : "Nama perusahaan"} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Position" : "Posisi"}</Label>
-                                  <Input value={exp.position} onChange={(e) => updateExperience(exp.id, "position", e.target.value)} placeholder={resumeLang === "en" ? "Job title" : "Jabatan"} />
+                                  <Label htmlFor={`exp-${i}-position`}>{resumeLang === "en" ? "Position" : "Posisi"}</Label>
+                                  <Input id={`exp-${i}-position`} value={exp.position} onChange={(e) => updateExperience(exp.id, "position", e.target.value)} placeholder={resumeLang === "en" ? "Job title" : "Jabatan"} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
-                                  <Input value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
+                                  <Label htmlFor={`exp-${i}-location`}>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
+                                  <Input id={`exp-${i}-location`} value={exp.location} onChange={(e) => updateExperience(exp.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
-                                  <Input type="month" value={exp.startDate} onChange={(e) => updateExperience(exp.id, "startDate", e.target.value)} />
+                                  <Label htmlFor={`exp-${i}-startDate`}>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
+                                  <Input id={`exp-${i}-startDate`} type="month" value={exp.startDate} onChange={(e) => updateExperience(exp.id, "startDate", e.target.value)} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
+                                  <Label htmlFor={`exp-${i}-endDate`}>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
                                   <div className="flex items-center gap-3">
                                     <Input
+                                      id={`exp-${i}-endDate`}
                                       type="month" value={exp.endDate}
                                       onChange={(e) => updateExperience(exp.id, "endDate", e.target.value)}
                                       disabled={exp.current}
                                       className={exp.current ? "opacity-50" : ""}
                                     />
-                                    <Label className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
+                                    <Label htmlFor={`exp-${i}-current`} className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
                                       <input
+                                        id={`exp-${i}-current`}
                                         type="checkbox"
                                         checked={exp.current}
                                         onChange={(e) => updateExperience(exp.id, "current", e.target.checked)}
@@ -2200,9 +2721,11 @@ export function ResumeBuilder() {
                                 </div>
                               </div>
                               <div className="space-y-2 mt-4">
-                                <Label>{resumeLang === "en" ? "Job Description" : "Deskripsi Pekerjaan"}</Label>
+                                <Label htmlFor={`exp-${i}-description`}>{resumeLang === "en" ? "Job Description" : "Deskripsi Pekerjaan"}</Label>
                                 <textarea
-                                  className="w-full min-h-[80px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                  id={`exp-${i}-description`}
+                                  onInput={autoGrowTextarea}
+                                  className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                   placeholder={resumeLang === "en" ? "Describe responsibilities and achievements..." : "Jelaskan tanggung jawab dan pencapaianmu..."}
                                   value={exp.description}
                                   onChange={(e) => updateExperience(exp.id, "description", e.target.value)}
@@ -2231,44 +2754,46 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "organizations") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Users} color="bg-teal-500">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Users} color="bg-teal-500">
                       <div className="space-y-4">
                         {(resume.organizations ?? []).length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-4">
                             {resumeLang === "en" ? "No organizational experience yet. Click below to add." : "Belum ada pengalaman organisasi. Klik tombol di bawah untuk menambah."}
                           </p>
                         )}
-                        {(resume.organizations ?? []).map((org) => (
+                        {(resume.organizations ?? []).map((org, i) => (
                           <Card key={org.id} className="border-border/50">
                             <CardContent className="pt-4">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Organization" : "Organisasi"}</Label>
-                                  <Input value={org.organization} onChange={(e) => updateOrganization(org.id, "organization", e.target.value)} placeholder={resumeLang === "en" ? "Organization name" : "Nama organisasi"} />
+                                  <Label htmlFor={`org-${i}-organization`}>{resumeLang === "en" ? "Organization" : "Organisasi"}</Label>
+                                  <Input id={`org-${i}-organization`} value={org.organization} onChange={(e) => updateOrganization(org.id, "organization", e.target.value)} placeholder={resumeLang === "en" ? "Organization name" : "Nama organisasi"} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Position / Role" : "Posisi / Jabatan"}</Label>
-                                  <Input value={org.position} onChange={(e) => updateOrganization(org.id, "position", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Coordinator" : "cth. Koordinator"} />
+                                  <Label htmlFor={`org-${i}-position`}>{resumeLang === "en" ? "Position / Role" : "Posisi / Jabatan"}</Label>
+                                  <Input id={`org-${i}-position`} value={org.position} onChange={(e) => updateOrganization(org.id, "position", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Coordinator" : "cth. Koordinator"} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
-                                  <Input value={org.location} onChange={(e) => updateOrganization(org.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
+                                  <Label htmlFor={`org-${i}-location`}>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
+                                  <Input id={`org-${i}-location`} value={org.location} onChange={(e) => updateOrganization(org.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
-                                  <Input type="month" value={org.startDate} onChange={(e) => updateOrganization(org.id, "startDate", e.target.value)} />
+                                  <Label htmlFor={`org-${i}-startDate`}>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
+                                  <Input id={`org-${i}-startDate`} type="month" value={org.startDate} onChange={(e) => updateOrganization(org.id, "startDate", e.target.value)} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
+                                  <Label htmlFor={`org-${i}-endDate`}>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
                                   <div className="flex items-center gap-3">
                                     <Input
+                                      id={`org-${i}-endDate`}
                                       type="month" value={org.endDate}
                                       onChange={(e) => updateOrganization(org.id, "endDate", e.target.value)}
                                       disabled={org.current}
                                       className={org.current ? "opacity-50" : ""}
                                     />
-                                    <Label className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
+                                    <Label htmlFor={`org-${i}-current`} className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
                                       <input
+                                        id={`org-${i}-current`}
                                         type="checkbox"
                                         checked={org.current}
                                         onChange={(e) => updateOrganization(org.id, "current", e.target.checked)}
@@ -2280,9 +2805,11 @@ export function ResumeBuilder() {
                                 </div>
                               </div>
                               <div className="space-y-2 mt-4">
-                                <Label>{resumeLang === "en" ? "Description (one bullet per line)" : "Deskripsi (satu bullet per baris)"}</Label>
+                                <Label htmlFor={`org-${i}-description`}>{resumeLang === "en" ? "Description (one bullet per line)" : "Deskripsi (satu bullet per baris)"}</Label>
                                 <textarea
-                                  className="w-full min-h-[80px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                  id={`org-${i}-description`}
+                                  onInput={autoGrowTextarea}
+                                  className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                   placeholder={resumeLang === "en" ? "What you did, one achievement per line..." : "Apa yang dikerjakan, satu pencapaian per baris..."}
                                   value={org.description}
                                   onChange={(e) => updateOrganization(org.id, "description", e.target.value)}
@@ -2303,49 +2830,51 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "research") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={FlaskConical} color="bg-cyan-600">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={FlaskConical} color="bg-cyan-600">
                       <div className="space-y-4">
                         {(resume.research ?? []).length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-4">
                             {resumeLang === "en" ? "No research yet. Add each research separately." : "Belum ada riset. Tambahkan tiap riset satu per satu."}
                           </p>
                         )}
-                        {(resume.research ?? []).map((rs) => (
+                        {(resume.research ?? []).map((rs, i) => (
                           <Card key={rs.id} className="border-border/50">
                             <CardContent className="pt-4">
                               <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Research Title" : "Judul Riset"}</Label>
-                                  <Input value={rs.title} onChange={(e) => updateResearch(rs.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Hate Speech Detection in Indonesian Tweets" : "cth. Deteksi Ujaran Kebencian di Tweet Indonesia"} />
+                                  <Label htmlFor={`rs-${i}-title`}>{resumeLang === "en" ? "Research Title" : "Judul Riset"}</Label>
+                                  <Input id={`rs-${i}-title`} value={rs.title} onChange={(e) => updateResearch(rs.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Hate Speech Detection in Indonesian Tweets" : "cth. Deteksi Ujaran Kebencian di Tweet Indonesia"} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Paper Status (optional)" : "Status Paper (opsional)"}</Label>
-                                  <Input value={rs.status ?? ""} onChange={(e) => updateResearch(rs.id, "status", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Under Review, Published, Awaiting Publication" : "cth. Under Review, Published, Awaiting Publication"} />
+                                  <Label htmlFor={`rs-${i}-status`}>{resumeLang === "en" ? "Paper Status (optional)" : "Status Paper (opsional)"}</Label>
+                                  <Input id={`rs-${i}-status`} value={rs.status ?? ""} onChange={(e) => updateResearch(rs.id, "status", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Under Review, Published, Awaiting Publication" : "cth. Under Review, Published, Awaiting Publication"} />
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Lab / Institution" : "Lab / Institusi"}</Label>
-                                    <Input value={rs.organization} onChange={(e) => updateResearch(rs.id, "organization", e.target.value)} placeholder={resumeLang === "en" ? "e.g. AI Lab" : "cth. Lab AI"} />
+                                    <Label htmlFor={`rs-${i}-organization`}>{resumeLang === "en" ? "Lab / Institution" : "Lab / Institusi"}</Label>
+                                    <Input id={`rs-${i}-organization`} value={rs.organization} onChange={(e) => updateResearch(rs.id, "organization", e.target.value)} placeholder={resumeLang === "en" ? "e.g. AI Lab" : "cth. Lab AI"} />
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
-                                    <Input value={rs.location} onChange={(e) => updateResearch(rs.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
+                                    <Label htmlFor={`rs-${i}-location`}>{resumeLang === "en" ? "Location" : "Lokasi"}</Label>
+                                    <Input id={`rs-${i}-location`} value={rs.location} onChange={(e) => updateResearch(rs.id, "location", e.target.value)} placeholder="Jakarta, Indonesia" />
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
-                                    <Input type="month" value={rs.startDate} onChange={(e) => updateResearch(rs.id, "startDate", e.target.value)} />
+                                    <Label htmlFor={`rs-${i}-startDate`}>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
+                                    <Input id={`rs-${i}-startDate`} type="month" value={rs.startDate} onChange={(e) => updateResearch(rs.id, "startDate", e.target.value)} />
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
+                                    <Label htmlFor={`rs-${i}-endDate`}>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
                                     <div className="flex items-center gap-3">
                                       <Input
+                                        id={`rs-${i}-endDate`}
                                         type="month" value={rs.endDate}
                                         onChange={(e) => updateResearch(rs.id, "endDate", e.target.value)}
                                         disabled={rs.current}
                                         className={rs.current ? "opacity-50" : ""}
                                       />
-                                      <Label className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
+                                      <Label htmlFor={`rs-${i}-current`} className="flex items-center gap-1.5 text-xs whitespace-nowrap cursor-pointer">
                                         <input
+                                          id={`rs-${i}-current`}
                                           type="checkbox"
                                           checked={rs.current}
                                           onChange={(e) => updateResearch(rs.id, "current", e.target.checked)}
@@ -2357,9 +2886,11 @@ export function ResumeBuilder() {
                                   </div>
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Description (one bullet per line)" : "Deskripsi (satu bullet per baris)"}</Label>
+                                  <Label htmlFor={`rs-${i}-description`}>{resumeLang === "en" ? "Description (one bullet per line)" : "Deskripsi (satu bullet per baris)"}</Label>
                                   <textarea
-                                    className="w-full min-h-[80px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                    id={`rs-${i}-description`}
+                                    onInput={autoGrowTextarea}
+                                    className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                     placeholder={resumeLang === "en" ? "Contributions, methods, results — one per line..." : "Kontribusi, metode, hasil — satu per baris..."}
                                     value={rs.description}
                                     onChange={(e) => updateResearch(rs.id, "description", e.target.value)}
@@ -2381,25 +2912,27 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "projects") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={FileText} color="bg-sky-500">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={FileText} color="bg-sky-500">
                       <div className="space-y-4">
                         {resume.projects.length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-4">
                             {resumeLang === "en" ? "No projects yet. Add your portfolio projects." : "Belum ada proyek. Tambahkan proyek portfoliomu."}
                           </p>
                         )}
-                        {resume.projects.map((proj) => (
+                        {resume.projects.map((proj, i) => (
                           <Card key={proj.id} className="border-border/50">
                             <CardContent className="pt-4">
                               <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Project Name" : "Nama Proyek"}</Label>
-                                  <Input value={proj.name} onChange={(e) => updateProject(proj.id, "name", e.target.value)} placeholder={resumeLang === "en" ? "e.g. E-Commerce App" : "cth. Aplikasi E-Commerce"} />
+                                  <Label htmlFor={`proj-${i}-name`}>{resumeLang === "en" ? "Project Name" : "Nama Proyek"}</Label>
+                                  <Input id={`proj-${i}-name`} value={proj.name} onChange={(e) => updateProject(proj.id, "name", e.target.value)} placeholder={resumeLang === "en" ? "e.g. E-Commerce App" : "cth. Aplikasi E-Commerce"} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Description" : "Deskripsi"}</Label>
+                                  <Label htmlFor={`proj-${i}-description`}>{resumeLang === "en" ? "Description" : "Deskripsi"}</Label>
                                   <textarea
-                                    className="w-full min-h-[80px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                    id={`proj-${i}-description`}
+                                    onInput={autoGrowTextarea}
+                                    className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                     placeholder={resumeLang === "en" ? "Describe the project, your role, tech stack, impact..." : "Jelaskan proyek, peranmu, teknologi, dampak..."}
                                     value={proj.description}
                                     onChange={(e) => updateProject(proj.id, "description", e.target.value)}
@@ -2407,8 +2940,9 @@ export function ResumeBuilder() {
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Technologies (comma separated)" : "Teknologi (pisah koma)"}</Label>
+                                    <Label htmlFor={`proj-${i}-technologies`}>{resumeLang === "en" ? "Technologies (comma separated)" : "Teknologi (pisah koma)"}</Label>
                                     <Input
+                                      id={`proj-${i}-technologies`}
                                       value={techDrafts[proj.id] ?? (proj.technologies || []).join(", ")}
                                       onChange={(e) => setTechDrafts((d) => ({ ...d, [proj.id]: e.target.value }))}
                                       onBlur={(e) => {
@@ -2424,8 +2958,8 @@ export function ResumeBuilder() {
                                     />
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>URL</Label>
-                                    <Input value={proj.url || ""} onChange={(e) => updateProject(proj.id, "url", e.target.value)} placeholder="https://github.com/..." />
+                                    <Label htmlFor={`proj-${i}-url`}>URL</Label>
+                                    <Input id={`proj-${i}-url`} value={proj.url || ""} onChange={(e) => updateProject(proj.id, "url", e.target.value)} placeholder="https://github.com/..." />
                                   </div>
                                 </div>
                               </div>
@@ -2444,18 +2978,24 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "education") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={GraduationCap} color="bg-amber-500">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={GraduationCap} color="bg-amber-500">
                       <div className="space-y-4">
                         {resume.education.length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-4">{resumeLang === "en" ? "No education yet." : "Belum ada pendidikan."}</p>
                         )}
-                        {resume.education.map((edu) => (
+                        {resume.education.map((edu, i) => (
                           <Card key={edu.id} className="border-border/50">
                             <CardContent className="pt-4">
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2 sm:col-span-2">
                                   <Label>{resumeLang === "en" ? "Level" : "Jenjang"}</Label>
-                                  <div className="flex gap-2 flex-wrap">
+                                  {/* Bukan input tunggal: dua tombol toggle. Diberi
+                                      role group + nama agar terbaca sebagai satu kelompok. */}
+                                  <div
+                                    className="flex gap-2 flex-wrap"
+                                    role="group"
+                                    aria-label={resumeLang === "en" ? "Education level" : "Jenjang pendidikan"}
+                                  >
                                     {([
                                       ["univ", resumeLang === "en" ? "University" : "Perguruan Tinggi"],
                                       ["school", resumeLang === "en" ? "High School" : "SMA/SMK/Sederajat"],
@@ -2477,44 +3017,46 @@ export function ResumeBuilder() {
                                   </div>
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Institution" : "Institusi"}</Label>
-                                  <Input value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} placeholder={resumeLang === "en" ? "University / School name" : "Nama universitas/sekolah"} />
+                                  <Label htmlFor={`edu-${i}-institution`}>{resumeLang === "en" ? "Institution" : "Institusi"}</Label>
+                                  <Input id={`edu-${i}-institution`} value={edu.institution} onChange={(e) => updateEducation(edu.id, "institution", e.target.value)} placeholder={resumeLang === "en" ? "University / School name" : "Nama universitas/sekolah"} />
                                 </div>
                                 {(edu.level ?? "univ") === "univ" && (
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Degree" : "Gelar"}</Label>
-                                    <Input value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} placeholder="S1, B.Sc., Master" />
+                                    <Label htmlFor={`edu-${i}-degree`}>{resumeLang === "en" ? "Degree" : "Gelar"}</Label>
+                                    <Input id={`edu-${i}-degree`} value={edu.degree} onChange={(e) => updateEducation(edu.id, "degree", e.target.value)} placeholder="S1, B.Sc., Master" />
                                   </div>
                                 )}
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Major / Field" : "Jurusan"}</Label>
-                                  <Input value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} placeholder={(edu.level ?? "univ") === "univ" ? (resumeLang === "en" ? "Major" : "Nama jurusan/prodi") : (resumeLang === "en" ? "Major (optional)" : "Jurusan/Program keahlian (opsional)")} />
+                                  <Label htmlFor={`edu-${i}-field`}>{resumeLang === "en" ? "Major / Field" : "Jurusan"}</Label>
+                                  <Input id={`edu-${i}-field`} value={edu.field} onChange={(e) => updateEducation(edu.id, "field", e.target.value)} placeholder={(edu.level ?? "univ") === "univ" ? (resumeLang === "en" ? "Major" : "Nama jurusan/prodi") : (resumeLang === "en" ? "Major (optional)" : "Jurusan/Program keahlian (opsional)")} />
                                 </div>
                                 {(edu.level ?? "univ") === "univ" && (
                                   <div className="space-y-2">
-                                    <Label>GPA / IPK</Label>
-                                    <Input value={edu.gpa} onChange={(e) => updateEducation(edu.id, "gpa", e.target.value)} placeholder="3.50" />
+                                    <Label htmlFor={`edu-${i}-gpa`}>GPA / IPK</Label>
+                                    <Input id={`edu-${i}-gpa`} value={edu.gpa} onChange={(e) => updateEducation(edu.id, "gpa", e.target.value)} placeholder="3.50" />
                                   </div>
                                 )}
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
-                                  <Input type="month" value={edu.startDate} onChange={(e) => updateEducation(edu.id, "startDate", e.target.value)} />
+                                  <Label htmlFor={`edu-${i}-startDate`}>{resumeLang === "en" ? "Start Date" : "Tanggal Mulai"}</Label>
+                                  <Input id={`edu-${i}-startDate`} type="month" value={edu.startDate} onChange={(e) => updateEducation(edu.id, "startDate", e.target.value)} />
                                 </div>
                                 <div className="space-y-2">
-                                  <Label>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
-                                  <Input type="month" value={edu.endDate} onChange={(e) => updateEducation(edu.id, "endDate", e.target.value)} placeholder={resumeLang === "en" ? "Leave empty if ongoing" : "Kosongkan bila masih berjalan"} />
+                                  <Label htmlFor={`edu-${i}-endDate`}>{resumeLang === "en" ? "End Date" : "Tanggal Selesai"}</Label>
+                                  <Input id={`edu-${i}-endDate`} type="month" value={edu.endDate} onChange={(e) => updateEducation(edu.id, "endDate", e.target.value)} placeholder={resumeLang === "en" ? "Leave empty if ongoing" : "Kosongkan bila masih berjalan"} />
                                 </div>
                               </div>
                               {(edu.level ?? "univ") === "univ" && (
                                 <div className="space-y-3 mt-4 border-t border-border/50 pt-4">
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Thesis Title (optional)" : "Judul Skripsi / Tugas Akhir (opsional)"}</Label>
-                                    <Input value={edu.thesisTitle ?? ""} onChange={(e) => updateEducation(edu.id, "thesisTitle", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Content-Based Job Recommendation System" : "cth: Sistem Rekomendasi Lowongan Berbasis Konten"} />
+                                    <Label htmlFor={`edu-${i}-thesisTitle`}>{resumeLang === "en" ? "Thesis Title (optional)" : "Judul Skripsi / Tugas Akhir (opsional)"}</Label>
+                                    <Input id={`edu-${i}-thesisTitle`} value={edu.thesisTitle ?? ""} onChange={(e) => updateEducation(edu.id, "thesisTitle", e.target.value)} placeholder={resumeLang === "en" ? "e.g. Content-Based Job Recommendation System" : "cth: Sistem Rekomendasi Lowongan Berbasis Konten"} />
                                   </div>
                                   <div className="space-y-2">
-                                    <Label>{resumeLang === "en" ? "Thesis Description (optional)" : "Deskripsi Skripsi (opsional)"}</Label>
+                                    <Label htmlFor={`edu-${i}-thesisDescription`}>{resumeLang === "en" ? "Thesis Description (optional)" : "Deskripsi Skripsi (opsional)"}</Label>
                                     <textarea
-                                      className="w-full min-h-[70px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                      id={`edu-${i}-thesisDescription`}
+                                      onInput={autoGrowTextarea}
+                                      className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                       placeholder={resumeLang === "en" ? "What you did for thesis: method, tech, results..." : "Apa yang dikerjakan di skripsi: metode, teknologi, hasil..."}
                                       value={edu.thesisDescription ?? ""}
                                       onChange={(e) => updateEducation(edu.id, "thesisDescription", e.target.value)}
@@ -2537,28 +3079,31 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "skills") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Wrench} color="bg-rose-500">
+                    <SectionCard key={sid} open={isSectionCardOpen(sid)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Wrench} color="bg-rose-500">
                       <div className="space-y-4">
                         {(resume.skillGroups ?? []).length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-2">
                             {resumeLang === "en" ? "No skill groups yet. Add your first category (e.g. Programming Languages)." : "Belum ada grup skill. Tambahkan kategori pertama (cth. Programming Languages)."}
                           </p>
                         )}
-                        {(resume.skillGroups ?? []).map((g) => (
+                        {(resume.skillGroups ?? []).map((g, i) => (
                           <Card key={g.id} className="border-border/50">
                             <CardContent className="pt-4">
                               <div className="space-y-2">
-                                <Label>{resumeLang === "en" ? "Category title (e.g. Programming Languages)" : "Judul kategori (cth. Programming Languages)"}</Label>
+                                <Label htmlFor={`skill-${i}-title`}>{resumeLang === "en" ? "Category title (e.g. Programming Languages)" : "Judul kategori (cth. Programming Languages)"}</Label>
                                 <Input
+                                  id={`skill-${i}-title`}
                                   value={g.title}
                                   onChange={(e) => updateSkillGroup(g.id, "title", e.target.value)}
                                   placeholder="Programming Languages"
                                 />
                               </div>
                               <div className="space-y-2 mt-3">
-                                <Label>{resumeLang === "en" ? "Skills (comma or newline separated)" : "Skills (pisah koma atau baris baru)"}</Label>
+                                <Label htmlFor={`skill-${i}-items`}>{resumeLang === "en" ? "Skills (comma or newline separated)" : "Skills (pisah koma atau baris baru)"}</Label>
                                 <textarea
-                                  className="w-full min-h-[70px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                                  id={`skill-${i}-items`}
+                                  onInput={autoGrowTextarea}
+                                  className="w-full min-h-[120px] rounded-xl border-2 border-border bg-background p-3 text-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                                   placeholder="JavaScript, TypeScript, Python"
                                   value={skillDrafts[g.id] ?? (g.items ?? []).join(", ")}
                                   onChange={(e) => setSkillDrafts((d) => ({ ...d, [g.id]: e.target.value }))}
@@ -2594,7 +3139,7 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                   if (sid === "awards") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Award} color="bg-amber-500" defaultOpen={false}>
+                    <SectionCard key={sid} open={isSectionCardOpen(sid, false)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Award} color="bg-amber-500" defaultOpen={false}>
                       <div className="space-y-5">
                         <div className="space-y-3">
                           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -2603,25 +3148,26 @@ export function ResumeBuilder() {
                           {(resume.awards ?? []).length === 0 && (
                             <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No awards yet." : "Belum ada penghargaan."}</p>
                           )}
-                          {(resume.awards ?? []).map((raw) => {
+                          {(resume.awards ?? []).map((raw, i) => {
                             const a = typeof raw === "string" ? { id: raw, title: raw, organizer: "", month: "", year: "" } : raw
                             return (
                               <Card key={a.id} className="border-border/50">
                                 <CardContent className="pt-4">
                                   <div className="grid grid-cols-1 gap-3">
                                     <div className="space-y-2">
-                                      <Label>{resumeLang === "en" ? "Placement + Name" : "Juara + Nama"}</Label>
-                                      <Input value={a.title} onChange={(e) => updateAwardItem(a.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. 2nd Place Hackathon 2025" : "cth. Juara 2 Hackathon 2025"} />
+                                      <Label htmlFor={`aw-${i}-title`}>{resumeLang === "en" ? "Placement + Name" : "Juara + Nama"}</Label>
+                                      <Input id={`aw-${i}-title`} value={a.title} onChange={(e) => updateAwardItem(a.id, "title", e.target.value)} placeholder={resumeLang === "en" ? "e.g. 2nd Place Hackathon 2025" : "cth. Juara 2 Hackathon 2025"} />
                                     </div>
                                     <div className="grid grid-cols-1 gap-3">
                                       <div className="space-y-2">
-                                        <Label>{resumeLang === "en" ? "Organizer" : "Penyelenggara"}</Label>
-                                        <Input value={a.organizer} onChange={(e) => updateAwardItem(a.id, "organizer", e.target.value)} placeholder="Komdigi, Microsoft" />
+                                        <Label htmlFor={`aw-${i}-organizer`}>{resumeLang === "en" ? "Organizer" : "Penyelenggara"}</Label>
+                                        <Input id={`aw-${i}-organizer`} value={a.organizer} onChange={(e) => updateAwardItem(a.id, "organizer", e.target.value)} placeholder="Komdigi, Microsoft" />
                                       </div>
                                       <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-2">
-                                          <Label>{resumeLang === "en" ? "Month" : "Bulan"}</Label>
+                                          <Label htmlFor={`aw-${i}-month`}>{resumeLang === "en" ? "Month" : "Bulan"}</Label>
                                           <select
+                                            id={`aw-${i}-month`}
                                             value={a.month ?? ""}
                                             onChange={(e) => updateAwardItem(a.id, "month", e.target.value)}
                                             className="w-full h-10 rounded-xl border-2 border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors cursor-pointer"
@@ -2633,8 +3179,8 @@ export function ResumeBuilder() {
                                           </select>
                                         </div>
                                         <div className="space-y-2">
-                                          <Label>{resumeLang === "en" ? "Year" : "Tahun"}</Label>
-                                          <Input value={a.year} onChange={(e) => updateAwardItem(a.id, "year", e.target.value)} placeholder="2025" />
+                                          <Label htmlFor={`aw-${i}-year`}>{resumeLang === "en" ? "Year" : "Tahun"}</Label>
+                                          <Input id={`aw-${i}-year`} value={a.year} onChange={(e) => updateAwardItem(a.id, "year", e.target.value)} placeholder="2025" />
                                         </div>
                                       </div>
                                     </div>
@@ -2669,7 +3215,14 @@ export function ResumeBuilder() {
                             <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No certifications yet." : "Belum ada sertifikasi."}</p>
                           )}
                           <div className="flex gap-2">
-                            <Input placeholder={resumeLang === "en" ? "Add certification..." : "Tambah sertifikasi..."} className="flex-1" value={newCert} onChange={(e) => setNewCert(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCertification()} />
+                            <Input
+                              placeholder={resumeLang === "en" ? "Add certification..." : "Tambah sertifikasi..."}
+                              className="flex-1"
+                              aria-label={resumeLang === "en" ? "Add certification" : "Tambah sertifikasi"}
+                              value={newCert}
+                              onChange={(e) => setNewCert(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && addCertification()}
+                            />
                             <Button variant="outline" size="sm" onClick={addCertification}>{resumeLang === "en" ? "Add" : "Tambah"}</Button>
                           </div>
                         </div>
@@ -2677,7 +3230,7 @@ export function ResumeBuilder() {
                     </SectionCard>
                   )
                                     if (sid === "languages") return (
-                    <SectionCard key={sid} title={getSectionLabel(sid, resumeLang)} icon={Languages} color="bg-pink-500" defaultOpen={false}>
+                    <SectionCard key={sid} open={isSectionCardOpen(sid, false)} onOpenChange={(o) => setSectionCardOpen(sid, o)} title={getSectionLabel(sid, resumeLang)} icon={Languages} color="bg-pink-500" defaultOpen={false}>
                       <div className="space-y-3">
                         {resume.languages.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
@@ -2692,7 +3245,14 @@ export function ResumeBuilder() {
                           <p className="text-sm text-muted-foreground text-center py-2">{resumeLang === "en" ? "No languages yet." : "Belum ada bahasa."}</p>
                         )}
                         <div className="flex gap-2">
-                          <Input placeholder={resumeLang === "en" ? "Add language..." : "Tambah bahasa..."} className="flex-1" value={newLang} onChange={(e) => setNewLang(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLanguage()} />
+                          <Input
+                            placeholder={resumeLang === "en" ? "Add language..." : "Tambah bahasa..."}
+                            className="flex-1"
+                            aria-label={resumeLang === "en" ? "Add language" : "Tambah bahasa"}
+                            value={newLang}
+                            onChange={(e) => setNewLang(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && addLanguage()}
+                          />
                           <Button variant="outline" size="sm" onClick={addLanguage}>{resumeLang === "en" ? "Add" : "Tambah"}</Button>
                         </div>
                       </div>
@@ -2706,6 +3266,16 @@ export function ResumeBuilder() {
 
           <div className="space-y-6">
             <div className="sticky top-24">
+              {/* T8/T10b: chip autosave + progress juga di sidebar. */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Tersimpan otomatis di browser ini
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  {filledSections}/8 bagian terisi
+                </span>
+              </div>
               <Card className="border-primary/30 bg-primary/5">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-sm">
@@ -2767,7 +3337,7 @@ export function ResumeBuilder() {
                             onClick={() => toggleSection(id)}
                             title={hidden ? "Tampilkan section" : "Sembunyikan section"}
                             aria-label={hidden ? `Tampilkan ${getSectionLabel(id, resumeLang)}` : `Sembunyikan ${getSectionLabel(id, resumeLang)}`}
-                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            className="p-2.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                           >
                             {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                           </button>
@@ -2776,7 +3346,7 @@ export function ResumeBuilder() {
                             disabled={idx === 0}
                             title="Pindah ke atas"
                             aria-label={`Pindah ${getSectionLabel(id, resumeLang)} ke atas`}
-                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                            className="p-2.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
                           >
                             <ArrowUp className="w-3.5 h-3.5" />
                           </button>
@@ -2785,7 +3355,7 @@ export function ResumeBuilder() {
                             disabled={idx === sectionOrder.length - 1}
                             title="Pindah ke bawah"
                             aria-label={`Pindah ${getSectionLabel(id, resumeLang)} ke bawah`}
-                            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                            className="p-2.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
                           >
                             <ArrowDown className="w-3.5 h-3.5" />
                           </button>
@@ -2793,6 +3363,16 @@ export function ResumeBuilder() {
                       )
                     })}
                   </div>
+                  {/* T11: preset fresh graduate — sembunyikan section yang
+                      biasanya tidak relevan, data tetap tersimpan. */}
+                  <button
+                    onClick={applyFreshGraduatePreset}
+                    className="w-full mt-3 rounded-xl border border-border px-3 py-2.5 text-left text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+                    title="Sembunyikan Riset, Proyek, dan Organisasi (data tidak dihapus)"
+                  >
+                    <span className="block font-semibold">Preset: Sederhana (fresh graduate)</span>
+                    <span className="block text-[10px] mt-0.5">Sembunyikan Riset, Proyek, Organisasi. Datamu tidak hilang.</span>
+                  </button>
                   <p className="text-[10px] text-muted-foreground mt-3">
                     Section kosong otomatis disembunyikan di preview. Pengaturan tersimpan otomatis.
                   </p>
@@ -2803,14 +3383,34 @@ export function ResumeBuilder() {
                 <CardHeader>
                   <CardTitle className="text-sm">Export</CardTitle>
                   <CardDescription>
-                    {resumeLang === "en" ? "Download PDF of your resume" : "Download PDF resume kamu"}
+                    Cetak CV jadi PDF, atau simpan datamu sebagai file agar bisa dipindah perangkat.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full gap-2" size="lg" onClick={() => setShowSupportPrompt(true)} disabled={exportingPdf}>
+                  <Button className="w-full gap-2" size="lg" onClick={startPrintFlow} disabled={exportingPdf}>
                     {exportingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                    {exportingPdf ? "Menyiapkan PDF..." : "Download PDF"}
+                    {exportingPdf ? "Menyiapkan PDF..." : "Cetak / Simpan PDF"}
                   </Button>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Di dialog berikutnya, pilih tujuan 'Save as PDF' / 'Simpan sebagai PDF' lalu Simpan.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportJson}>
+                      <Save className="w-3.5 h-3.5" />
+                      Simpan data ke file
+                    </Button>
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => importFileRef.current?.click()}>
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      Muat dari file
+                    </Button>
+                  </div>
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={handleImportJsonFile}
+                  />
                   <button
                     onClick={() => setCompactOnePage((v) => !v)}
                     aria-pressed={compactOnePage}
@@ -2845,7 +3445,7 @@ export function ResumeBuilder() {
                         onClick={() => handleToggleLanguage("id")}
                         disabled={translating || resumeLang === "id"}
                         className={cn(
-                          "px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors",
+                          "px-3 py-2 min-h-[40px] rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors",
                           resumeLang === "id" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                         )}
                         title="Terjemahkan ke Bahasa Indonesia"
@@ -2857,7 +3457,7 @@ export function ResumeBuilder() {
                         onClick={() => handleToggleLanguage("en")}
                         disabled={translating || resumeLang === "en"}
                         className={cn(
-                          "px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors",
+                          "px-3 py-2 min-h-[40px] rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-colors",
                           resumeLang === "en" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
                         )}
                         title="Translate to English"
@@ -2875,6 +3475,17 @@ export function ResumeBuilder() {
                   <p className="text-[10px] text-muted-foreground">
                     Untuk optimasi konten, gunakan analisis skor ATS agar saran yang diberikan tepat sasaran.
                   </p>
+                  <div className="border-t border-border/60 pt-3 mt-1">
+                    <button
+                      onClick={() => setShowWipeConfirm(true)}
+                      className="text-[11px] font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 underline underline-offset-2 transition-colors"
+                    >
+                      Hapus semua data saya
+                    </button>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Menghapus isi CV, pengaturan, dan konfigurasi API dari browser ini.
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -2894,6 +3505,19 @@ export function ResumeBuilder() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* T6: aksi cetak mengambang di bawah layar kecil, agar tombol export
+          tidak jatuh di bawah seluruh form. Disembunyikan di layar lg+. */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-card border-t border-border shadow-[0_-8px_24px_rgba(0,0,0,0.12)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <Button
+          className="w-full gap-2 h-12 text-base"
+          onClick={startPrintFlow}
+          disabled={exportingPdf}
+        >
+          {exportingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+          {exportingPdf ? "Menyiapkan PDF..." : "Cetak / Simpan PDF"}
+        </Button>
       </div>
     </section>
   )

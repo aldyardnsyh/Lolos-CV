@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Upload, FileText, Loader2, CheckCircle2, AlertCircle, Sparkles } from "lucide-react"
+import { Upload, FileText, Loader2, CheckCircle2, AlertCircle, Sparkles, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -12,14 +12,17 @@ import type { ResumeData } from "@/types"
 
 interface CVUploaderProps {
   onApply: (resume: ResumeData) => void
+  // Dipakai tombol "Isi Manual" untuk menutup panel uploader (kembali ke form).
+  onClose?: () => void
 }
 
-export function CVUploader({ onApply }: CVUploaderProps) {
+export function CVUploader({ onApply, onClose }: CVUploaderProps) {
   const [file, setFile] = useState<File | null>(null)
   const [extracting, setExtracting] = useState(false)
   const [progress, setProgress] = useState(0)
   const [extractedData, setExtractedData] = useState<ResumeData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [needsApiHelp, setNeedsApiHelp] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -54,6 +57,7 @@ export function CVUploader({ onApply }: CVUploaderProps) {
     setFile(f)
     setExtractedData(null)
     setError(null)
+    setNeedsApiHelp(false)
 
     if (!f.name.toLowerCase().endsWith(".pdf")) {
       setError("Hanya file PDF yang didukung")
@@ -72,7 +76,13 @@ export function CVUploader({ onApply }: CVUploaderProps) {
       const data = await extractResumeFromCvText(text)
       setExtractedData(data)
     } catch (err: any) {
-      setError(err.message || "Gagal memproses file")
+      const msg = String(err?.message || "")
+      if (msg.includes("API belum dikonfigurasi") || msg.includes("API not configured")) {
+        // API key belum ada: jangan tampilkan error mentah, tunjukkan jalan keluarnya.
+        setNeedsApiHelp(true)
+      } else {
+        setError(err.message || "Gagal memproses file")
+      }
     } finally {
       setExtracting(false)
     }
@@ -148,6 +158,38 @@ export function CVUploader({ onApply }: CVUploaderProps) {
         <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
           <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {needsApiHelp && (
+        <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                Butuh Mesin AI untuk Membaca Isi CV
+              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1 leading-relaxed">
+                Data dasar berhasil dibaca dari PDF-mu. Untuk melengkapi secara otomatis, aktifkan Mesin AI (10 menit, ada panduan) — atau lanjut isi manual, gratis.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 gap-2 border-blue-300 dark:border-blue-700"
+              onClick={() => document.getElementById("api-settings")?.scrollIntoView({ behavior: "smooth" })}
+            >
+              <KeyRound className="w-4 h-4" />
+              Atur API Key
+            </Button>
+            <Button className="flex-1 gap-2" onClick={() => onClose?.()}>
+              <FileText className="w-4 h-4" />
+              Isi Manual
+            </Button>
+          </div>
         </div>
       )}
 
