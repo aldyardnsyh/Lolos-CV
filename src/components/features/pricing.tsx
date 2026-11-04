@@ -101,6 +101,36 @@ export function Pricing() {
             </Card>
 
             <Card className="border-border/50">
+              <CardContent className="pt-6 space-y-4">
+                <h3 className="text-lg font-bold font-display leading-snug">
+                  Gratis. Bukan trial.{" "}
+                  <span className="text-primary">Bukan freemium jebakan.</span>
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Banyak builder CV mengunci unduhan PDF-mu di balik trial berbayar yang auto-perpanjang. Di sini tidak ada itu.
+                </p>
+                <ul className="space-y-2.5">
+                  {[
+                    "Rp 0 untuk semua fitur utama: builder, 4 template, unduh PDF tanpa watermark, cek kecocokan kata kunci.",
+                    "Tanpa kartu kredit, tanpa masa percobaan, tanpa akun.",
+                    "Data CV-mu tersimpan di browser-mu sendiri. Bukan di server kami, tidak dijual, tidak dipakai iklan.",
+                    "Kalau terbantu dan mau dukung pengembangnya: traktir kopi via Saweria. Opsional 100%, namamu tampil di leaderboard donatur.",
+                  ].map((point) => (
+                    <li key={point} className="flex items-start gap-3">
+                      <div className="p-0.5 rounded-full text-primary shrink-0 mt-0.5">
+                        <Check className="w-4 h-4" />
+                      </div>
+                      <span className="text-sm leading-relaxed">{point}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Satu-satunya hal yang bisa berbiaya: kalau kamu mengaktifkan fitur AI dengan kunci API milikmu sendiri, dan itu dibayar langsung ke penyedia AI-nya, bukan ke kami. Belum punya kunci? Panduan kunci gratis ada di dalam, atau pakai mode demo dulu.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/50">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3 mb-4">
                   <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">

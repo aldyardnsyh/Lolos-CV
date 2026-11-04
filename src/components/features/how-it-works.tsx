@@ -5,8 +5,8 @@ import { Search, Settings, FileText, BarChart3, ArrowDown } from "lucide-react"
 const steps = [
   {
     icon: Settings,
-    title: "1. Hubungkan API",
-    description: "Pakai API key dari penyedia yang kamu punya. Data tetap di browser, tidak ke server kami.",
+    title: "1. Siapkan CV-mu (opsional: aktifkan AI)",
+    description: "Mulai langsung pakai mode demo atau isi manual, gratis. Punya kunci AI sendiri? Hubungkan untuk analisis lowongan otomatis.",
     color: "bg-primary",
   },
   {

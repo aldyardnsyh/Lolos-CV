@@ -51,7 +51,7 @@ const features = [
   {
     icon: Shield,
     title: "Privasi Terjaga",
-    description: "API key kamu cuma ada di browser sendiri. Data tidak dikirim ke server kami. Kami tidak lihat isi CV kamu.",
+    description: "API key dan data CV kamu disimpan hanya di browser. Permintaan AI diteruskan lewat server kami ke penyedia AI pilihanmu — tidak disimpan, tidak dicatat.",
     color: "bg-indigo-600",
   },
 ]

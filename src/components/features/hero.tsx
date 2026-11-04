@@ -1,13 +1,33 @@
 "use client"
 
-import { ArrowRight, Sparkles, FileText, Target, TrendingUp } from "lucide-react"
+import { useEffect, useState } from "react"
+import { ArrowRight, Sparkles, FileText, Target, TrendingUp, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
+const MAGANGHUB_BANNER_KEY = "maganghub_banner_dismissed"
+
 export function Hero() {
+  const [showCampaignBanner, setShowCampaignBanner] = useState(false)
+
   const scrollTo = (id: string) => {
     const el = document.getElementById(id)
     if (el) el.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(MAGANGHUB_BANNER_KEY) !== "1") {
+        setShowCampaignBanner(true)
+      }
+    } catch {}
+  }, [])
+
+  const dismissCampaignBanner = () => {
+    setShowCampaignBanner(false)
+    try {
+      window.localStorage.setItem(MAGANGHUB_BANNER_KEY, "1")
+    } catch {}
   }
 
   return (
@@ -17,24 +37,62 @@ export function Hero() {
       <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
 
       <div className="container relative">
+        {showCampaignBanner && (
+          <div className="max-w-4xl mx-auto mb-10 animate-fade-up">
+            <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-3 rounded-2xl border border-primary/30 bg-primary/10 dark:bg-primary/20 px-4 py-3 pr-10 sm:pr-12">
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-sm sm:text-[15px] leading-relaxed text-foreground">
+                  🎯 Lagi siap daftar <span className="font-semibold">Magang Kemnaker Batch 3</span>? Bikin CV yang benar-benar dibaca — gratis, tanpa akun, langsung dari HP.
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Info resmi pendaftaran:{" "}
+                  <a
+                    href="https://maganghub.kemnaker.go.id"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground transition-colors"
+                  >
+                    maganghub.kemnaker.go.id
+                  </a>
+                </p>
+              </div>
+              <Button size="sm" className="shrink-0 gap-1.5" onClick={() => scrollTo("builder")}>
+                Buat CV-nya Sekarang
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+              <button
+                type="button"
+                onClick={dismissCampaignBanner}
+                aria-label="Tutup banner kampanye"
+                className="absolute top-2.5 right-2.5 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="max-w-4xl mx-auto text-center">
           <div className="flex justify-center mb-6 animate-fade-up">
             <Badge variant="secondary" className="px-4 py-1.5 text-sm gap-2">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
-              Resume ATS-Friendly · Analisis Lowongan · Optimasi Skor
+              Gratis Rp 0 · Tanpa Akun · Tanpa Watermark
             </Badge>
           </div>
 
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold font-display leading-tight mb-6 animate-fade-up">
-            Buat CV yang{" "}
-            <span className="text-primary">
-              Lolos Seleksi ATS
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold font-display leading-tight mb-6 animate-fade-up">
+            CV Ramah ATS,{" "}
+            <span className="block text-primary">
+              Dibuat 15 Menit, Gratis Rp 0
             </span>
           </h1>
 
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-up">
-            Tempel link lowongan dari LinkedIn, JobStreet, atau Glints. CV kamu
-            langsung menyesuaikan dengan kriterianya, bukan sekadar template satu ukuran.
+            Tempel link lowongan dari LinkedIn, JobStreet, atau Glints — LolosCV
+            bantu susun CV yang menjawab kebutuhan lowongan itu. Semua fitur
+            utama gratis Rp 0, tanpa daftar akun, unduh PDF tanpa watermark.
+            Fitur AI opsional pakai kunci milikmu sendiri, ada panduannya, atau
+            pakai mode demo dulu.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12 animate-fade-up">
@@ -45,6 +103,18 @@ export function Hero() {
             >
               Mulai Buat Resume
               <ArrowRight className="w-5 h-5" />
+            </Button>
+            <Button
+              size="xl"
+              variant="outline"
+              className="w-full sm:w-auto gap-2 text-base"
+              onClick={() => {
+                scrollTo("builder")
+                window.dispatchEvent(new CustomEvent("demo_generate"))
+              }}
+            >
+              <Sparkles className="w-5 h-5" />
+              Coba Tanpa API Key (Gratis)
             </Button>
             <Button
               size="xl"
