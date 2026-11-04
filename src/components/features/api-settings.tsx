@@ -460,14 +460,25 @@ export function ApiSettings() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex justify-center">
-              <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-muted/50 p-1">
+              <div
+                role="group"
+                aria-label="Pilih mode konfigurasi API"
+                className="relative grid w-full max-w-xs grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-lg bg-card shadow-sm ring-1 ring-border transition-transform duration-300",
+                    easyMode ? "translate-x-0" : "translate-x-full"
+                  )}
+                />
                 <button
                   type="button"
                   onClick={switchToEasy}
                   aria-pressed={easyMode}
                   className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                    easyMode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                    "relative z-10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors",
+                    easyMode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Mode Mudah
@@ -477,8 +488,8 @@ export function ApiSettings() {
                   onClick={switchToAdvanced}
                   aria-pressed={!easyMode}
                   className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                    !easyMode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                    "relative z-10 rounded-lg px-4 py-2 text-sm font-semibold transition-colors",
+                    !easyMode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   Mode Lanjutan

@@ -24,6 +24,7 @@ import {
 } from "@/lib/resume-file"
 import { CVUploader } from "@/components/features/cv-uploader"
 import { DonationCard } from "@/components/features/donation-card"
+import { SUPPORT_MESSAGES, nextSupportMessage, fillSupportMessage, firstNameOf, type SupportMessage } from "@/lib/support-messages"
 import type { ResumeData, ResumeTemplate, ResumeExperience, ResumeEducation, ResumeSkill, JobPosting } from "@/types"
 
 interface TemplateStyle {
@@ -402,6 +403,7 @@ export function ResumeBuilder() {
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false)
   const [preGenerate, setPreGenerate] = useState<ResumeData | null>(null)
   const [showSupportPrompt, setShowSupportPrompt] = useState(false)
+  const [supportMessage, setSupportMessage] = useState<SupportMessage>(SUPPORT_MESSAGES[0])
   // Guard data contoh sebelum print (T9) + konfirmasi hapus semua data (T7).
   const [showPlaceholderWarning, setShowPlaceholderWarning] = useState(false)
   const [showWipeConfirm, setShowWipeConfirm] = useState(false)
@@ -1126,10 +1128,9 @@ export function ResumeBuilder() {
 
       // window.print() bersifat blocking: sampai baris ini dijalankan berarti
       // dialog print sudah selesai (user sudah cetak/simpan/batal). Modal
-      // donasi sekarang muncul DI SINI, sekali, bukan menyela sebelum print.
-      if (safeLocalGet("donation_modal_dismissed") !== "1") {
-        setShowSupportPrompt(true)
-      }
+      // dukungan muncul DI SINI, setiap kali user menyimpan CV.
+      setSupportMessage(nextSupportMessage())
+      setShowSupportPrompt(true)
 
       // Cleanup after print dialog closes
       setTimeout(() => {
@@ -1164,12 +1165,6 @@ export function ResumeBuilder() {
       return
     }
     continuePrintFlow()
-  }
-
-  const dismissDonationForever = () => {
-    safeLocalSet("donation_modal_dismissed", "1")
-    setShowSupportPrompt(false)
-    showToast("Modal donasi tidak akan ditampilkan lagi")
   }
 
   // T7: export seluruh data CV ke file JSON.
@@ -1338,7 +1333,7 @@ export function ResumeBuilder() {
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={resumeLang === "en" ? "Like the result?" : "Suka hasilnya?"}
+            aria-label={resumeLang === "en" ? "A message for you" : "Pesan untukmu"}
           >
             <button
               onClick={() => setShowSupportPrompt(false)}
@@ -1353,28 +1348,25 @@ export function ResumeBuilder() {
               </div>
             </div>
             <h3 className="font-bold text-lg">
-              {resumeLang === "en" ? "Like the result?" : "Suka hasilnya?"}
+              {fillSupportMessage({ ...supportMessage, body: supportMessage.title }, resume.personalInfo.fullName)}
             </h3>
-            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-              {resumeLang === "en"
-                ? "LolosCV is free. A small donation keeps the servers running. Completely optional."
-                : "LolosCV gratis. Donasi kecil membantu biaya server, sepenuhnya opsional."}
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              {fillSupportMessage(supportMessage, resume.personalInfo.fullName)}
             </p>
-            <div className="mt-5">
+            <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+              {firstNameOf(resume.personalInfo.fullName)
+                ? `Kalau LolosCV membantu, ${firstNameOf(resume.personalInfo.fullName)} boleh dukung pengembangnya. Sepenuhnya opsional, dan CV-mu tetap gratis tanpa syarat.`
+                : "Kalau LolosCV membantu, kamu boleh dukung pengembangnya. Sepenuhnya opsional, dan CV-mu tetap gratis tanpa syarat."}
+            </p>
+            <div className="mt-4">
               <DonationCard compact lang={resumeLang === "en" ? "en" : "id"} onDone={() => setShowSupportPrompt(false)} />
               <Button
                 variant="outline"
                 className="w-full mt-2"
                 onClick={() => setShowSupportPrompt(false)}
               >
-                {resumeLang === "en" ? "Maybe later" : "Nanti saja"}
+                {resumeLang === "en" ? "Close" : "Tutup"}
               </Button>
-              <button
-                onClick={dismissDonationForever}
-                className="mx-auto mt-2 block text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
-              >
-                {resumeLang === "en" ? "Don't show this again" : "Jangan tampilkan lagi"}
-              </button>
             </div>
           </div>
         </div>

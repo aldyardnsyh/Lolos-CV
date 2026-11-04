@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Menu, X, Sparkles, Settings, CheckCircle2, Key, Sun, Moon } from "lucide-react"
+import Image from "next/image"
+import { Menu, X, Settings, CheckCircle2, Key, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getApiConfig } from "@/lib/api"
@@ -49,8 +50,16 @@ export function Navbar() {
         >
           <div className="relative">
             <div className="absolute inset-0 bg-primary rounded-xl blur-sm opacity-60 group-hover:opacity-100 transition-opacity" />
-            <div className="relative flex items-center justify-center w-9 h-9 bg-primary rounded-xl">
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="relative overflow-hidden rounded-xl">
+              <Image
+                src="/icon.png"
+                alt="Logo LolosCV"
+                width={36}
+                height={36}
+                sizes="36px"
+                className="h-9 w-9"
+                priority
+              />
             </div>
           </div>
           <span className="text-xl font-bold text-foreground">

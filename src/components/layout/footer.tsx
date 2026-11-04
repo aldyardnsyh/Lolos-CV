@@ -1,6 +1,6 @@
 "use client"
 
-import { Sparkles } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 
 export function Footer() {
@@ -15,8 +15,15 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
-              <div className="flex items-center justify-center w-9 h-9 bg-primary rounded-xl">
-                <Sparkles className="w-5 h-5 text-white" />
+              <div className="relative">
+                <Image
+                  src="/icon.png"
+                  alt="Logo LolosCV"
+                  width={36}
+                  height={36}
+                  sizes="36px"
+                  className="h-9 w-9 rounded-xl"
+                />
               </div>
               <span className="text-xl font-bold">
                 Lolos<span className="text-primary">CV</span>
@@ -51,12 +58,18 @@ export function Footer() {
 
           <div>
             <h4 className="font-semibold mb-4">Sumber Lowongan</h4>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-4">
+              Tempel link lowongan dari platform ini ke Job Analyzer. Paling andal dari halaman lowongan aslinya.
+              Kalau satu platform memblokir akses otomatis, pakai tombol Tempel Teks.
+            </p>
             <ul className="space-y-3">
               {[
-                { name: "LinkedIn", url: "https://linkedin.com" },
-                { name: "JobStreet", url: "https://jobstreet.com" },
-                { name: "Glints", url: "https://glints.com" },
-                { name: "Indeed", url: "https://indeed.com" },
+                { name: "LinkedIn", url: "https://www.linkedin.com/jobs/" },
+                { name: "JobStreet", url: "https://id.jobstreet.com/id/jobs" },
+                { name: "Glints", url: "https://glints.com/id/lowongan-kerja" },
+                { name: "Indeed Indonesia", url: "https://id.indeed.com/" },
+                { name: "MagangHub Kemnaker", url: "https://maganghub.kemnaker.go.id/" },
+                { name: "KarierHub Kemnaker", url: "https://karierhub.kemnaker.go.id/" },
               ].map((item) => (
                 <li key={item.name}>
                   <a
@@ -75,7 +88,7 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} LolosCV. All rights reserved.
+            &copy; {new Date().getFullYear()} PogungSoftwareHouseTeam (PSHT). All rights reserved.
           </p>
           {/* TODO: tambahkan email kontak & sosial media asli di sini setelah tersedia */}
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
